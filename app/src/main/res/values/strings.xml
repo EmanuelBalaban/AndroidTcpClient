@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Android Remote Controller</string>
+
+
+    <string name="message_hint">Enter your message here</string>
+    <string name="ip_hint">Server IP</string>
+    <string name="port_hint">Port</string>
+    <string name="sendButton">Send Message</string>
+    <string name="connectButton">Connect</string>
+    <string name="connectViaQRButton">Connect via QR</string>
+
+
+    <string name="connectedStatus">Not Connected!</string>
+    <string name="connectedTo">192.168.1.1:80808</string>
+
+    <string name="title_activity_main">Main</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="nav_header_subtitle">android.studio@android.com</string>
+    <string name="nav_header_desc">Navigation header</string>
+    <string name="action_settings">Settings</string>
+    <string name="content_main">Welcome!</string>
+</resources>
