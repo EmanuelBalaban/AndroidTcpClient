@@ -25,6 +25,15 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         //LaunchActivity(Banner.class);
+
+        if (isServerLoggedIn){
+            try {
+                InetSocketAddress address = (InetSocketAddress) MainActivity.socket.getRemoteSocketAddress();
+                Log("Connected to " + address.getHostString() + ":" + address.getPort() + " from last instance!");
+            } catch (Exception ignored){
+
+            }
+        }
     }
 
     @Override

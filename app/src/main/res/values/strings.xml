@@ -13,6 +13,12 @@
     <string name="connectedStatus">Not Connected!</string>
     <string name="connectedTo">192.168.1.1:80808</string>
 
+    <string name="firstLayout">First</string>
+    <string name="secondLayout">Second</string>
+    <string name="thirdLayout">Third</string>
+    <string name="fourthLayout">Fourth</string>
+    <string name="fifthLayout">Fifth</string>
+
     <string name="title_activity_main">Main</string>
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>

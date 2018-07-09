@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.os.Bundle;
+import android.support.constraint.ConstraintLayout;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.util.DisplayMetrics;
@@ -91,17 +92,21 @@ public class Main extends AppCompatActivity
     public boolean onNavigationItemSelected(MenuItem item) {
         // Handle navigation view item clicks here.
         int id = item.getItemId();
-        TextView label = findViewById(R.id.textView2);
-        label.setText(item.getTitle());
+        //TextView label = findViewById(R.id.textView2);
+        //label.setText(item.getTitle());
 
-        if (id == R.id.nav_camera) {
-            // Handle the camera action
+        if (id == R.id.nav_console) {
+            ConstraintLayout cl = findViewById(R.id.first);
+            cl.bringToFront();
         } else if (id == R.id.nav_gallery) {
-
+            ConstraintLayout cl = findViewById(R.id.second);
+            cl.bringToFront();
         } else if (id == R.id.nav_slideshow) {
-
+            ConstraintLayout cl = findViewById(R.id.third);
+            cl.bringToFront();
         } else if (id == R.id.nav_manage) {
-
+            ConstraintLayout cl = findViewById(R.id.fourth);
+            cl.bringToFront();
         } /*else if (id == R.id.nav_share) {
 
         } else if (id == R.id.nav_send) {
@@ -126,7 +131,6 @@ public class Main extends AppCompatActivity
     }
 
     void UpdateHeader(){
-        //New This here
         Button btn = findViewById(R.id.headerButton);
         TextView txt = findViewById(R.id.headerTextView);
         if (MainActivity.isServerLoggedIn){
