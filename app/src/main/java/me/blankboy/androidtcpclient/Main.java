@@ -126,7 +126,7 @@ public class Main extends AppCompatActivity
     }
 
     void UpdateHeader(){
-        //New This here
+        //New This her
         Button btn = findViewById(R.id.headerButton);
         TextView txt = findViewById(R.id.headerTextView);
         if (MainActivity.isServerLoggedIn){
