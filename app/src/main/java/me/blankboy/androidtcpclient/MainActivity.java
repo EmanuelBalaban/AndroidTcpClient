@@ -14,26 +14,21 @@ import android.widget.*;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
-import java.io.IOException;
 import java.net.*;
+import java.util.Date;
 import java.util.Objects;
 
-public class MainActivity extends AppCompatActivity {
+import me.blankboy.tcpclient.*;
+
+public abstract class MainActivity extends AppCompatActivity implements ConnectionListener{
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        //LaunchActivity(Banner.class);
 
-        if (isServerLoggedIn){
-            try {
-                InetSocketAddress address = (InetSocketAddress) MainActivity.socket.getRemoteSocketAddress();
-                Log("Connected to " + address.getHostString() + ":" + address.getPort() + " from last instance!");
-            } catch (Exception ignored){
-
-            }
-        }
+        if (Variables.IsServerConnected())
+            Log("Connected to saved server " + Variables.PrimaryServer.UniqueIdentity());
     }
 
     @Override
@@ -44,41 +39,72 @@ public class MainActivity extends AppCompatActivity {
         setResult(Activity.RESULT_OK, resultIntent);
     }
 
-    public static Socket socket;
-    public static boolean isServerLoggedIn = false;
+    @Override
+    public void onMessageReceived(Message message, Connection sender){
+        if (sender.equals(Variables.PrimaryServer)){
+            Log("\n" + message.Text);
+        }
+    }
+    @Override
+    public void onDataReceived(byte[] data, Date time, Connection sender){
+
+    }
+    @Override
+    public void onException(Exception ex, Connection sender){
+
+    }
+    @Override
+    public void onLog(Log log, Connection sender){
+        if (sender.equals(Variables.PrimaryServer)){
+            Log("\n[" + String.valueOf(log.Type) + "] " + log.Text);
+        }
+    }
+    @Override
+    public void onLoginResponse(boolean IsLoggedIn, Connection sender){
+        if (IsLoggedIn && sender.equals(Variables.PrimaryServer)){
+            Variables.InitializeSecondaryServer(sender.Hostname, sender.Port, sender.Username, sender.Password);
+        }
+    }
 
     public  void onClick(View view){
         int id = view.getId();
-        if (id == R.id.sendButton){
-            if (!isServerLoggedIn){
-                return;
-            }
-            final EditText messField = findViewById(R.id.messageEditText);
-            final String message = messField.getText().toString();
-            if (socket == null || socket.isClosed() || socket.isOutputShutdown()){
+        if (id == R.id.sendButton) {
+            if (Variables.IsServerConnected()) {
                 Log("\nCannot send message if not connected to server!");
                 return;
             }
+
+            final EditText messField = findViewById(R.id.messageEditText);
+            final String message = messField.getText().toString();
+
             if (message.equals("")) {
                 Log("\nPlease enter a message!");
                 return;
             }
-            try {
-                //socket.getOutputStream().write(message.getBytes());
-                SendMessage(socket, message);
-                messField.setText("");
-                hideKeyboardFrom(this, messField);
-                Log("\nYou: " + message);
-            } catch (Exception ex) {
-                Log("\nConnection with server might be down!");
-            }
+
+            Variables.PrimaryServer.SendMessage(message);
+            messField.setText("");
+            hideKeyboardFrom(this, messField);
+            Log("\nYou: " + message);
         }
         if (id == R.id.connectButton){
-            Disconnect();
             final String hostname = ((EditText) findViewById(R.id.ipEditText)).getText().toString();
             final Integer port = Integer.valueOf(((EditText) findViewById(R.id.portEditText)).getText().toString());
+
             ClearConsole();
+
             Log("Connecting to " + hostname + ":" + port + "...");
+
+            Variables.PrimaryServer = new Connection(hostname, port);
+            Variables.PrimaryServer.addListener(this);
+
+            if (Variables.PrimaryServer.IsConnected()){
+                Log(" Connected!");
+            } else{
+
+            }
+
+            /*
             new Thread(new Runnable() {
                 public void run(){
                     try {
@@ -132,13 +158,12 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }).start();
+            */
         }
         if (id == R.id.connectQRButton){
             IntentIntegrator integrator = new IntentIntegrator(this);
             integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE_TYPES);
             integrator.setPrompt("Scan qr code displayed on server page to connect!");
-            //integrator.setBeepEnabled(true);
-            //integrator.setOrientationLocked(true);
             integrator.initiateScan();
         }
     }
@@ -155,20 +180,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
-    public static void Disconnect(){
-        isServerLoggedIn = false;
-        try {
-            if (socket != null && socket.isConnected()) {
-                SendMessage(socket, "[GOODBYE]");
-                socket.shutdownInput();
-                socket.shutdownOutput();
-                socket.close();
-            }
-        } catch (Exception ignored){
-
-        }
-    }
     public void vibrate(int milliseconds) {
         ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
     }
@@ -176,76 +187,21 @@ public class MainActivity extends AppCompatActivity {
     public void Log(String text){
         final TextView console = findViewById(R.id.debugText);
         console.setText(console.getText() + text);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                console.invalidate();
+            }
+        });
     }
     public  void ClearConsole(){
         final TextView console = findViewById(R.id.debugText);
         console.setText("");
     }
-    public static boolean ActivityTimeout = false;
     void LaunchActivity(Class activity){
-        ActivityTimeout = false;
         startActivity(new Intent(this, activity));
     }
     public static void hideKeyboardFrom(Context context, View view) {
         ((InputMethodManager) Objects.requireNonNull(context.getSystemService(Activity.INPUT_METHOD_SERVICE))).hideSoftInputFromWindow(view.getWindowToken(), 0);
-    }
-    public static void SendMessage(Socket socket, String msg)
-    {
-        try {
-            while (socket.getInputStream().available() > 0) {
-            }
-
-            byte[] data = msg.getBytes();
-            byte[] sizeinfo = new byte[4];
-
-            sizeinfo[0] = (byte)data.length;
-            sizeinfo[1] = (byte)(data.length >> 8);
-            sizeinfo[2] = (byte)(data.length >> 16);
-            sizeinfo[3] = (byte)(data.length >> 24);
-
-
-            socket.getOutputStream().write(sizeinfo);
-            socket.getOutputStream().write(data);
-        } catch (Exception ignored){
-
-        }
-    }
-    public static String ReadMessage(Socket socket)
-    {
-        byte[] sizeinfo = new byte[4];
-
-        int totalread, currentread;
-
-        try {
-            currentread = totalread = socket.getInputStream().read(sizeinfo);
-
-            while (totalread < sizeinfo.length && currentread > 0) {
-                currentread = socket.getInputStream().read(sizeinfo, totalread, sizeinfo.length - totalread);
-
-
-                totalread += currentread;
-            }
-
-            int messagesize = 0;
-
-            messagesize |= sizeinfo[0];
-            messagesize |= (((int) sizeinfo[1]) << 8);
-            messagesize |= (((int) sizeinfo[2]) << 16);
-            messagesize |= (((int) sizeinfo[3]) << 24);
-
-            byte[] data = new byte[messagesize];
-
-            totalread = 0;
-            currentread = totalread = socket.getInputStream().read(data, totalread, data.length - totalread);
-
-            while (totalread < messagesize && currentread > 0) {
-                currentread = socket.getInputStream().read(data, totalread, data.length - totalread);
-                totalread += currentread;
-            }
-
-            return new String(data, 0, totalread);
-        } catch (Exception ex){
-            return  "";
-        }
     }
 }

@@ -122,20 +122,23 @@ public class Main extends AppCompatActivity
         int id = view.getId();
         if (id == R.id.headerButton){
             Button btn = findViewById(R.id.headerButton);
-            if (!MainActivity.isServerLoggedIn) startActivityForResult(new Intent(this, MainActivity.class), 13000);
+            if (!Variables.IsServerConnected()) startActivityForResult(new Intent(this, MainActivity.class), 13000);
             else {
-                MainActivity.Disconnect();
+                Variables.PrimaryServer.Disconnect();
                 UpdateHeader();
             }
+        }
+        if (id == R.id.navHeader || id == R.id.headerTextView){
+            if(Variables.IsServerConnected()) startActivity(new Intent(this, MainActivity.class));
         }
     }
 
     void UpdateHeader(){
         Button btn = findViewById(R.id.headerButton);
         TextView txt = findViewById(R.id.headerTextView);
-        if (MainActivity.isServerLoggedIn){
+        if (Variables.IsServerConnected()){
             btn.setText("Disconnect");
-            InetSocketAddress address = (InetSocketAddress) MainActivity.socket.getRemoteSocketAddress();
+            InetSocketAddress address = Variables.PrimaryServer.UniqueAddress;
             txt.setText(address.getHostString() + ":" + address.getPort());
         } else {
             btn.setText("Connect");
