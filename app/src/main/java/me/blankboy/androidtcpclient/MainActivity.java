@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Vibrator;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -14,25 +15,33 @@ import android.widget.*;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
-import java.net.*;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.security.MessageDigest;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Objects;
 
 import me.blankboy.tcpclient.*;
 
-public abstract class MainActivity extends AppCompatActivity implements ConnectionListener{
+import static me.blankboy.androidtcpclient.Variables.*;
+
+public class MainActivity extends AppCompatActivity implements ConnectionListener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        if (Variables.IsServerConnected())
-            Log("Connected to saved server " + Variables.PrimaryServer.UniqueIdentity());
+        if (IsServerConnected())
+            Log("Connected to saved server " + PrimaryServer.UniqueIdentity());
     }
 
     @Override
-    protected  void onPause(){
+    protected void onPause() {
         super.onPause();
         Intent resultIntent = new Intent();
         //resultIntent.putExtra(...);  // put data that you want returned to activity A
@@ -40,52 +49,186 @@ public abstract class MainActivity extends AppCompatActivity implements Connecti
     }
 
     @Override
-    public void onMessageReceived(Message message, Connection sender){
-        if (sender.equals(Variables.PrimaryServer)){
-            Log("\n" + message.Text);
+    public void onMessageReceived(Message message, Connection sender) {
+        if (message.Text.startsWith("[QUERY_RESULT]")) {
+            if (sender.LastQUERY != null && sender.LastQUERY.equalsIgnoreCase("[query]data_server")) {
+                String queryResult = message.Text.substring("[QUERY_RESULT]".length());
+                if (queryResult.contains(":")) {
+                    String[] ar = queryResult.split(":");
+                    if (ar.length >= 2) {
+                        Log("\nReceived data server connection info!");
+                        SecondaryServer = new Connection(ar[0], Integer.valueOf(ar[1]));
+                        SecondaryServer.IsDataConnection = true;
+                        SecondaryServer.Connect();
+                        SecondaryServer.Login(sender.Username, sender.Password);
+
+                        while (!SecondaryServer.IsLoggedIn) ;
+                        SecondaryServer.addListener(this);
+                    }
+                }
+            }
+        } else if (message.Text.startsWith("[RESULT]")) {
+            if (message.Text.equalsIgnoreCase("[RESULT]OK")) {
+                if (lastCommand.startsWith("[COMMAND]RECEIVE:")) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        //e.printStackTrace();
+                    }
+                    if (sendSelectedFile) {
+                        Log("\nSending file.");
+                        sendSelectedFile = false;
+                        byte[] data = readAllBytes(result);
+                        SecondaryServer.Send(data);
+                    }
+                }
+            }
+        } else if (sender.equals(PrimaryServer)) Log("\n" + message.Text);
+    }
+
+    HashMap<Connection, String> Files = new HashMap<>();
+
+    @Override
+    public void onDataReceived(byte[] data, Date time, Connection sender) {
+        if (sender.equals(SecondaryServer)) {
+            try {
+                boolean urgent = false;
+                if (data.length <= SecondaryServer.MaximumUMSize) {
+                    String UrgentMessage = new String(data);
+                    if (UrgentMessage.startsWith("[COMMAND]RECEIVE:")) {
+                        urgent = true;
+                        String file = UrgentMessage.substring("[COMMAND]RECEIVE:".length());
+                        if (file != "") {
+                            createFolder(AppMainDirectory);
+                            Files.put(sender, file);
+                            Log("\nIncoming File: " + file);
+                        }
+                    }
+                    if (UrgentMessage.equalsIgnoreCase("[RESULT]OK")) {
+                        if (lastCommand.startsWith("[COMMAND]RECEIVE:")) {
+                            try {
+                                Thread.sleep(500);
+                            } catch (InterruptedException e) {
+                                //e.printStackTrace();
+                            }
+                            if (sendSelectedFile) {
+                                Log("\nSending file.");
+                                sendSelectedFile = false;
+                                byte[] fileData = readAllBytes(result);
+                                SecondaryServer.Send(fileData);
+                            }
+                        }
+                    }
+                }
+                if (!urgent) {
+                    if (Files.containsKey(sender)){
+                        createFolder(AppMainDirectory);
+                        String file = Files.get(sender);
+                        FileOutputStream outputStream;
+                        try {
+                            File newFile = new File(new File(getFolderPath(AppMainDirectory)), file);
+                            newFile.createNewFile();
+                            outputStream = new FileOutputStream(newFile);
+                            outputStream.write(data);
+                            outputStream.close();
+
+                            Log("\nFile '" + file + "' was successfully downloaded!");
+
+                            Files.remove(sender);
+                        } catch (Exception e) {
+                            Log("\n" + e.toString());
+                        }
+                    }
+                }
+            }
+            catch (Exception ex){
+                Log("\n" + ex.toString());
+            }
         }
     }
+
     @Override
-    public void onDataReceived(byte[] data, Date time, Connection sender){
+    public void onException(Exception ex, Connection sender) {
 
     }
-    @Override
-    public void onException(Exception ex, Connection sender){
 
-    }
     @Override
-    public void onLog(Log log, Connection sender){
-        if (sender.equals(Variables.PrimaryServer)){
+    public void onLog(Log log, Connection sender) {
+        if (sender.equals(PrimaryServer)) {
             Log("\n[" + String.valueOf(log.Type) + "] " + log.Text);
         }
     }
+
     @Override
-    public void onLoginResponse(boolean IsLoggedIn, Connection sender){
-        if (IsLoggedIn && sender.equals(Variables.PrimaryServer)){
-            Variables.InitializeSecondaryServer(sender.Hostname, sender.Port, sender.Username, sender.Password);
+    public void onLoginResponse(boolean IsLoggedIn, Connection sender) {
+        if (IsLoggedIn && sender.equals(PrimaryServer)) {
+            PrimaryServer.SendMessage("[QUERY]DATA_SERVER");
+            // InitializeSecondaryServer(sender.Hostname, sender.Port, sender.Username, sender.Password);
         }
     }
 
+    String getFolderPath(String fname){
+        return getFilesDir() + File.separator + fname;
+    }
+    public void createFolder(String fname) {
+        String myfolder = getFolderPath(fname);
+        File f = new File(myfolder);
+        if (!f.exists())
+            f.mkdir();
+    }
+
+
+    private static final int READ_REQUEST_CODE = 42;
+    boolean sendSelectedFile = false;
     public  void onClick(View view){
         int id = view.getId();
+        if (id == R.id.sendFile){
+            if (PrimaryServer == null || !PrimaryServer.IsConnected()) {
+                Log("\nCannot send file if not connected to server!");
+                return;
+            }
+
+            final EditText messField = findViewById(R.id.messageEditText);
+            hideKeyboardFrom(this, messField);
+
+            sendSelectedFile = true;
+            selectFile();
+        }
         if (id == R.id.sendButton) {
-            if (Variables.IsServerConnected()) {
+            if (PrimaryServer == null || !PrimaryServer.IsConnected()) {
                 Log("\nCannot send message if not connected to server!");
                 return;
             }
 
             final EditText messField = findViewById(R.id.messageEditText);
             final String message = messField.getText().toString();
+            messField.setText("");
+            hideKeyboardFrom(this, messField);
 
             if (message.equals("")) {
                 Log("\nPlease enter a message!");
                 return;
             }
 
-            Variables.PrimaryServer.SendMessage(message);
-            messField.setText("");
-            hideKeyboardFrom(this, messField);
-            Log("\nYou: " + message);
+            boolean pool = false;
+            if (message.equalsIgnoreCase("[send]")) {
+                pool = true;
+                if (result == null){
+                    Log("\nFirst select a file to send!");
+                    return;
+                }
+                byte[] data = readAllBytes(result);
+                SecondaryServer.Send(data);
+            }
+            if (message.equalsIgnoreCase("[select]")){
+                pool = true;
+                selectFile();
+            }
+
+            if (!pool){
+                PrimaryServer.SendMessage(message);
+                Log("\nYou: " + message);
+            }
         }
         if (id == R.id.connectButton){
             final String hostname = ((EditText) findViewById(R.id.ipEditText)).getText().toString();
@@ -93,72 +236,19 @@ public abstract class MainActivity extends AppCompatActivity implements Connecti
 
             ClearConsole();
 
-            Log("Connecting to " + hostname + ":" + port + "...");
+            //Log("Connecting to " + hostname + ":" + port + "...");
 
-            Variables.PrimaryServer = new Connection(hostname, port);
-            Variables.PrimaryServer.addListener(this);
+            PrimaryServer = new Connection(hostname, port);
+            PrimaryServer.addListener(this);
+            PrimaryServer.Connect(hostname, port, 1000);
 
-            if (Variables.PrimaryServer.IsConnected()){
-                Log(" Connected!");
+            if (PrimaryServer.IsConnected()){
+                //Log(" Connected!");
+                while (!PrimaryServer.IsWaitingForData) ;
+                LaunchActivity(Login.class);
             } else{
-
+                Log("\nUnable to connect!");
             }
-
-            /*
-            new Thread(new Runnable() {
-                public void run(){
-                    try {
-                        socket = new Socket();
-                        socket.connect(new InetSocketAddress(hostname, port), 1000);
-                        Log(" Connected!");
-                    } catch (SocketTimeoutException ex){
-                        Log("\nUnable to connect! (SocketTimeoutException)");
-                    } catch (UnknownHostException ex){
-                        Log("\nUnable to connect! (UnknownHostException)");
-                    } catch (IOException ex) {
-                        Log("\nUnable to connect! (IOException)");
-                    } catch (Exception ignored){
-
-                    } finally {
-                        if (socket.isConnected()) {
-                            new Thread(new Runnable() {
-                                public void run() {
-                                    while (socket.isConnected()) {
-                                        String message;
-                                        try {
-                                            if (socket.getInputStream().available() > 0) {
-                                                message = ReadMessage(socket);
-                                                if (!isServerLoggedIn) {
-                                                    if (message.equalsIgnoreCase("[LOGIN_OK]")) {
-                                                        isServerLoggedIn = true;
-                                                        Log("\nLogged in successfully!");
-                                                    } else if (message.startsWith("[LOGIN_REJECT]")) {
-                                                        ActivityTimeout = true;
-                                                        isServerLoggedIn = false;
-                                                        Log("\nLogin request was rejected with status '" + message.substring("[LOGIN_REJECT]".length()) + "'");
-                                                        Log("\nDisconnected from server.");
-                                                        try {
-                                                            socket.close();
-                                                        }
-                                                        catch (Exception ignored){
-
-                                                        }
-                                                    }
-                                                }
-                                                else Log("\nServer: " + message);
-                                            }
-                                        } catch (Exception ignored) {
-
-                                        }
-                                    }
-                                }
-                            }).start();
-                            LaunchActivity(Login.class);
-                        }
-                    }
-                }
-            }).start();
-            */
         }
         if (id == R.id.connectQRButton){
             IntentIntegrator integrator = new IntentIntegrator(this);
@@ -167,29 +257,115 @@ public abstract class MainActivity extends AppCompatActivity implements Connecti
             integrator.initiateScan();
         }
     }
+    void selectFile(){
+        Intent n = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        n.addCategory(Intent.CATEGORY_OPENABLE);
+        n.setType("*/*");
+        startActivityForResult(n, READ_REQUEST_CODE);
+    }
+    private byte[] readAllBytes(Uri uri) {
+        byte[] result = null;
+        try {
+            InputStream iStream =   getContentResolver().openInputStream(uri);
+            result = getBytes(iStream);
+        }
+        catch (Exception ex){
+
+        }
+        finally {
+            return result;
+        }
+    }
+    public byte[] getBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        int bufferSize = 1024;
+        byte[] buffer = new byte[bufferSize];
+        int len = 0;
+        while ((len = inputStream.read(buffer)) != -1) {
+            byteBuffer.write(buffer, 0, len);
+        }
+        return byteBuffer.toByteArray();
+    }
+    Uri result = null;
+
+    String lastCommand;
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        IntentResult scanResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
-        if (scanResult != null) {
-            vibrate(250);
-            String result = scanResult.getContents();
-            Log("QRCode: " + result);
-            if (result.contains(":")){
-                ((TextView)findViewById(R.id.ipEditText)).setText(result.split(":")[0]);
-                ((TextView)findViewById(R.id.portEditText)).setText(result.split(":")[1]);
-                onClick(findViewById(R.id.connectButton));
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == READ_REQUEST_CODE) {
+                // The document selected by the user won't be returned in the intent.
+                // Instead, a URI to that document will be contained in the return intent
+                // provided to this method as a parameter.
+                // Pull that URI using resultData.getData().
+                Uri uri = null;
+                if (intent != null) {
+                    uri = intent.getData();
+                    result = uri;
+                    String filename = getFileName(uri);
+                    byte[] data = readAllBytes(result);
+                    Log("\nSelected: " + filename);
+                    lastCommand = "[COMMAND]RECEIVE:" + getFileName(result) + ":" + getMD5Hash(data) + ":" + data.length;
+                    SecondaryServer.SendMessage(lastCommand);
+                }
+            } else {
+                IntentResult scanResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
+                if (scanResult != null) {
+                    vibrate(250);
+                    String result = scanResult.getContents();
+                    Log("QRCode: " + result);
+                    if (result.contains(":")) {
+                        ((TextView) findViewById(R.id.ipEditText)).setText(result.split(":")[0]);
+                        ((TextView) findViewById(R.id.portEditText)).setText(result.split(":")[1]);
+                        onClick(findViewById(R.id.connectButton));
+                    }
+                }
             }
         }
+    }
+    String getMD5Hash(byte[] value){
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            md.update(value);
+            byte[] digest = md.digest();
+            StringBuffer sb = new StringBuffer();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b & 0xff));
+            }
+            return sb.toString();
+        }
+        catch (Exception ex){
+            return null;
+        }
+    }
+    String getFileName(Uri uri){
+        String lastScheme = uri.getLastPathSegment();
+        try{
+            if (lastScheme.contains(":")) lastScheme = lastScheme.substring(lastScheme.lastIndexOf(":") + 1);
+        }
+        catch (Exception ex){
+
+        }
+        try{
+            if (lastScheme.contains("/")) {
+                String[] list = lastScheme.split("/");
+                lastScheme = list[list.length - 1];
+            }
+        }
+        catch (Exception ex){
+
+        }
+        return lastScheme;
     }
     public void vibrate(int milliseconds) {
         ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
     }
     @SuppressLint("SetTextI18n")
     public void Log(String text){
-        final TextView console = findViewById(R.id.debugText);
-        console.setText(console.getText() + text);
+        final String text2 = text;
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                TextView console = findViewById(R.id.debugText);
+                console.setText(console.getText() + text2);
                 console.invalidate();
             }
         });

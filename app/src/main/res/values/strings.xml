@@ -6,6 +6,7 @@
     <string name="ip_hint">Server IP</string>
     <string name="port_hint">Port</string>
     <string name="sendButton">Send Message</string>
+    <string name="sendFile">Send File</string>
     <string name="connectButton">Connect</string>
     <string name="connectViaQRButton">Connect via QR</string>
 

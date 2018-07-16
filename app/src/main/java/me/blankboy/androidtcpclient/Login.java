@@ -5,11 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.TextView;
 
-import java.net.InetSocketAddress;
-
-import me.blankboy.tcpclient.ConnectionListener;
-
-public abstract class Login extends AppCompatActivity implements ConnectionListener {
+public class Login extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -19,9 +15,8 @@ public abstract class Login extends AppCompatActivity implements ConnectionListe
     }
 
     void onLoginClick(View view) {
-        TextView title = (TextView) findViewById(R.id.title);
-        TextView usernameBox = (TextView) findViewById(R.id.usernameBox);
-        TextView passwordBox = (TextView) findViewById(R.id.passwordBox);
+        TextView usernameBox = findViewById(R.id.usernameBox);
+        TextView passwordBox = findViewById(R.id.passwordBox);
 
         String username = usernameBox.getText().toString();
         String password = passwordBox.getText().toString();
