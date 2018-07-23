@@ -60,8 +60,8 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
                         SecondaryServer = new Connection(ar[0], Integer.valueOf(ar[1]));
                         SecondaryServer.IsDataConnection = true;
                         SecondaryServer.Connect();
-                        SecondaryServer.Login(sender.Username, sender.Password);
-
+                        //SecondaryServer.Login(sender.Username, sender.Password);
+                        SecondaryServer.IsLoggedIn = true;
                         while (!SecondaryServer.IsLoggedIn) ;
                         SecondaryServer.addListener(this);
                     }
@@ -245,7 +245,9 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
             if (PrimaryServer.IsConnected()){
                 //Log(" Connected!");
                 while (!PrimaryServer.IsWaitingForData) ;
-                LaunchActivity(Login.class);
+                PrimaryServer.IsLoggedIn = true;
+                PrimaryServer.SendMessage("[QUERY]DATA_SERVER");
+                //LaunchActivity(Login.class);
             } else{
                 Log("\nUnable to connect!");
             }

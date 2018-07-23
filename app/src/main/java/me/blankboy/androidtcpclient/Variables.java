@@ -8,13 +8,7 @@ public class Variables {
     public static Connection PrimaryServer; // And this is for communications.
     public static Connection SecondaryServer; // This is for data transfers.
     public static boolean isSet = false;
-    public static void InitializeSecondaryServer(String hostname, int port, String username, String password){
-        if (isSet) return;
-        SecondaryServer = new Connection(hostname, port);
-        SecondaryServer.Connect();
-        SecondaryServer.Login(username, password);
-        isSet = true;
-    }
+
     public static boolean IsServerLoggedIn(){
         if (IsServerConnected() && PrimaryServer.IsLoggedIn) return true;
         return false;
