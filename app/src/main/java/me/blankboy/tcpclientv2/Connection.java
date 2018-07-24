@@ -14,6 +14,10 @@ public class Connection {
     public Socket getSocket() {
         return Socket;
     }
+    public boolean IsConnected(){
+        if (Socket != null && Socket.isConnected()) return true;
+        return false;
+    }
 
     private InetSocketAddress UniqueAddress;
 

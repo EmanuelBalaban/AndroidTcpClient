@@ -1,6 +1,7 @@
-package me.blankboy.androidtcpclient;
+package me.blankboy.extensions;
 
 import android.annotation.SuppressLint;
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.database.Cursor;
@@ -10,12 +11,70 @@ import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.security.MessageDigest;
 import java.util.Collections;
 import java.util.List;
 
-public class FileUtils {
+public class Extensions {
+
+    public static String getMD5Hash(byte[] value){
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            md.update(value);
+            byte[] digest = md.digest();
+            StringBuffer sb = new StringBuffer();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b & 0xff));
+            }
+            return sb.toString();
+        }
+        catch (Exception ex){
+            return null;
+        }
+    }
+
+    public static byte[] readAllBytes(ContentResolver resolver, Uri uri) {
+        byte[] result = null;
+        try {
+            InputStream iStream = resolver.openInputStream(uri);
+            result = getBytes(iStream);
+        }
+        catch (Exception ex){
+
+        }
+        finally {
+            return result;
+        }
+    }
+
+    public static byte[] getBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        int bufferSize = 1024;
+        byte[] buffer = new byte[bufferSize];
+        int len = 0;
+        while ((len = inputStream.read(buffer)) != -1) {
+            byteBuffer.write(buffer, 0, len);
+        }
+        return byteBuffer.toByteArray();
+    }
+
+    public static String getInternalFolderPath(String fname){
+        return Environment.getExternalStorageDirectory() + File.separator + fname;
+    }
+
+    public static void createInternalFolder(String fname) {
+        String myfolder = getInternalFolderPath(fname);
+        File f = new File(myfolder);
+        if (!f.exists())
+            f.mkdir();
+    }
+
     public static String getIPAddress(boolean useIPv4) {
         try {
             List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
@@ -42,6 +101,14 @@ public class FileUtils {
         } catch (Exception ignored) { } // for now eat exceptions
         return "";
     }
+
+    public static String getFileName(Context context, Uri fileUri){
+        String path = getRealPathFromUri(context, fileUri);
+        if (path.contains("/"))
+            path = path.substring(path.lastIndexOf("/") + 1);
+        return  path;
+    }
+
     @SuppressLint("NewApi")
     public static String getRealPathFromUri(final Context context,
                                             final Uri uri) {

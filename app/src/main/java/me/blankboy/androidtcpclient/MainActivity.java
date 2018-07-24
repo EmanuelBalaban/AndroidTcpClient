@@ -166,17 +166,6 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
         }
     }
 
-    String getFolderPath(String fname){
-        return Environment.getExternalStorageDirectory() + File.separator + fname;
-    }
-    public void createFolder(String fname) {
-        String myfolder = getFolderPath(fname);
-        File f = new File(myfolder);
-        if (!f.exists())
-            f.mkdir();
-    }
-
-
     private static final int READ_REQUEST_CODE = 42;
     boolean sendSelectedFile = false;
     public  void onClick(View view){
@@ -264,29 +253,8 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
         n.setType("*/*");
         startActivityForResult(n, READ_REQUEST_CODE);
     }
-    private byte[] readAllBytes(Uri uri) {
-        byte[] result = null;
-        try {
-            InputStream iStream =   getContentResolver().openInputStream(uri);
-            result = getBytes(iStream);
-        }
-        catch (Exception ex){
 
-        }
-        finally {
-            return result;
-        }
-    }
-    public byte[] getBytes(InputStream inputStream) throws IOException {
-        ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
-        int bufferSize = 1024;
-        byte[] buffer = new byte[bufferSize];
-        int len = 0;
-        while ((len = inputStream.read(buffer)) != -1) {
-            byteBuffer.write(buffer, 0, len);
-        }
-        return byteBuffer.toByteArray();
-    }
+
     Uri result = null;
 
     String lastCommand;
@@ -317,27 +285,7 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
             }
         }
     }
-    String getFileName(Context context, Uri fileUri){
-        String filename = FileUtils.getRealPathFromUri(this, result);
-        if (filename.contains("/"))
-            filename = filename.substring(filename.lastIndexOf("/") + 1);
-        return  filename;
-    }
-    String getMD5Hash(byte[] value){
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            md.update(value);
-            byte[] digest = md.digest();
-            StringBuffer sb = new StringBuffer();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b & 0xff));
-            }
-            return sb.toString();
-        }
-        catch (Exception ex){
-            return null;
-        }
-    }
+
     public void vibrate(int milliseconds) {
         ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
     }
