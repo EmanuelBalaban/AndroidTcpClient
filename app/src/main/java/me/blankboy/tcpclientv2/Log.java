@@ -19,7 +19,7 @@ public class Log implements Comparable<Log> {
         return other.Time.before(Time) ? 1 : -1;
     }
 
-    @Override // string format="{date} - {type} - {text}", string dateFormat="HH:mm:ss"
+    @Override
     public String toString() {
         return toString(Format.toString(), DateFormat.toString());
     }

@@ -1,66 +1,74 @@
 package me.blankboy.tcpclientv2;
-
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
-public class Connection{
-    /*
-    @Override
-    public boolean equals(Object other){
-        if (other instanceof Connection){
-            Connection otherCon = (Connection) other;
-            try {
-                if (otherCon.Socket.getLocalAddress().equals(Socket.getLocalAddress()))
-                    return true;
-            }
-            finally {
+public class Connection {
+    private Logger Console = new Logger();
 
-            }
-        }
-        return false;
+    private Socket Socket;
+
+    public Socket getSocket() {
+        return Socket;
     }
-    */
-    private void Log(String message){
-        Log log = new Log(message, LogType.INFO);
-        for (ConnectionListener l : listeners)
-            l.onLog(log, this);
+
+    private InetSocketAddress UniqueAddress;
+
+    public InetSocketAddress getRemoteAddress() {
+        return UniqueAddress;
     }
-    private void Log(String message, LogType type){
-        Log log = new Log(message, type);
-        for (ConnectionListener l : listeners)
-            l.onLog(log, this);
+
+    private boolean _IsWaitingForData = false;
+
+    public boolean IsWaitingForData() {
+        return _IsWaitingForData;
     }
-    private void AnnounceException(Exception ex){
-        Log(ex.toString(), LogType.ERROR);
-        for (ConnectionListener l : listeners)
+
+    private List<ConnectionListener> Listeners = new ArrayList<>();
+
+    public void addListener(ConnectionListener listener) {
+        if (!Listeners.contains(listener))
+            Listeners.add(listener);
+    }
+
+    private void broadcastPackage(DataPackage dataPackage) {
+        for (ConnectionListener l : Listeners)
+            l.onDataReceived(dataPackage, this);
+    }
+
+    private void broadcastException(Exception ex) {
+        for (ConnectionListener l : Listeners)
             l.onException(ex, this);
     }
 
-    private List<ConnectionListener> listeners = new ArrayList<ConnectionListener>();
-    public void addListener(ConnectionListener listener){
-        listeners.add(listener);
+    private void broadcastStatus(StatusType status) {
+        for (ConnectionListener l : Listeners)
+            l.onStatusChanged(status, this);
     }
 
-    public boolean IsConnected(){
-        return Socket.isConnected();
+    StatusType _LastStatus = StatusType.NULL;
+    StatusType _Status = StatusType.DISCONNECTED;
+
+    public StatusType getStatus() {
+        return _Status;
     }
 
-    public boolean IsDataConnection = false;
-    public boolean IsWaitingForData = false;
-    public boolean IsLoggedIn = false;
-
-    public String UniqueIdentity(){
-        return Hostname + ":" + Port;
+    void UpdateStatus(StatusType newStatus) {
+        _LastStatus = _Status;
+        if (_Status == newStatus) return;
+        _Status = newStatus;
+        broadcastStatus(_Status);
     }
-    public InetSocketAddress UniqueAddress;
-    public Socket Socket;
 
-    /*
+    void DowngradeStatus() throws Exception {
+        if (_LastStatus == StatusType.NULL)
+            throw new Exception("Unable to downgrade to Status.NULL!");
+        UpdateStatus(_LastStatus);
+    }
+
     @Override
     protected void finalize() throws Throwable {
         try {
@@ -69,37 +77,44 @@ public class Connection{
             super.finalize();
         }
     }
-    */
 
-    public Connection(){
+    public Connection() {
 
     }
-    public Connection(String Hostname, int Port){
+
+    public Connection(String Hostname, int Port) {
         this.Hostname = Hostname;
         this.Port = Port;
     }
-    public Connection(String Hostname, int Port, int Timeout){
+
+    public Connection(String Hostname, int Port, int Timeout) {
         this.Hostname = Hostname;
         this.Port = Port;
         this.Timeout = Timeout;
     }
-    public Connection(InetSocketAddress address){
+
+    public Connection(InetSocketAddress address) {
         Hostname = address.getHostString();
         Port = address.getPort();
     }
-    public Connection(InetSocketAddress address, int Timeout){
+
+    public Connection(InetSocketAddress address, int Timeout) {
         Hostname = address.getHostString();
         Port = address.getPort();
         this.Timeout = Timeout;
     }
+
     public String Hostname = "";
     public int Port = -1;
     private int Timeout = 5000;
+
     public void Connect() throws NullPointerException {
-        if (Hostname == "" || Port == -1) throw new NullPointerException("Hostname and port were not specified in constructor.");
+        if (Hostname == "" || Port == -1)
+            throw new NullPointerException("Hostname and port were not specified in call.");
         Connect(Hostname, Port, Timeout);
     }
-    public void Connect(String Hostname, int Port, int Timeout){
+
+    public void Connect(String Hostname, int Port, int Timeout) {
         this.Hostname = Hostname;
         this.Port = Port;
         this.Timeout = Timeout;
@@ -114,12 +129,11 @@ public class Connection{
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                try{
-                    Socket.connect(new InetSocketAddress(host, port));
-                    //Socket.connect(new InetSocketAddress(host, port), timeout);
-                }
-                catch (Exception ex){
-                    AnnounceException(ex);
+                try {
+                    //Socket.connect(new InetSocketAddress(host, port));
+                    Socket.connect(new InetSocketAddress(host, port), timeout);
+                } catch (Exception ex) {
+                    broadcastException(ex);
                 }
             }
         });
@@ -130,65 +144,81 @@ public class Connection{
 
         } finally {
             if (Socket.isConnected()) {
-                Log("Connected to " + UniqueAddress.getHostString() + ":" + UniqueAddress.getPort());
-                IsWaitingForData = false;
-                WaitForData();
+                //Console.Log("Connected to " + UniqueAddress.getHostString() + ":" + UniqueAddress.getPort());
+                _IsWaitingForData = false;
+                UpdateStatus(StatusType.CONNECTED);
             }
+            else UpdateStatus(StatusType.DISCONNECTED);
         }
     }
-    public int MaximumUMSize = 1024;
-    public void StopWaiting()
-    {
+    public void StopWaiting() {
         AwaitingCancellation = true;
-        try
-        {
-            while (IsWaitingForData) ;
-        }
-        catch (Exception ex)
-        {
+        try {
+            while (_IsWaitingForData) ;
+        } catch (Exception ex) {
 
         }
         AwaitingCancellation = false;
+        UpdateStatus(StatusType.CONNECTED);
     }
     boolean AwaitingCancellation = false;
-    public void WaitForData()
+
+    public void Disconnect()
     {
-        if (IsWaitingForData) return;
-        IsWaitingForData = true;
+        try
+        {
+            _IsWaitingForData = false;
+            AwaitingCancellation = true;
+            Socket.close();
+        }
+        catch (Exception ex)
+        {
+            broadcastException(ex);
+        }
+        finally
+        {
+            UpdateStatus(StatusType.DISCONNECTED);
+        }
+    }
+
+    public void StartWaiting(){
+        if (_IsWaitingForData) return;
+        _IsWaitingForData = true;
+        UpdateStatus(StatusType.LISTENING);
         final Connection sender = this;
         new Thread(new Runnable() {
             @Override
             public void run() {
                 try
                 {
-                    byte[] result;
-                    Date received;
+                    DataPackage dataPackage = null;
                     do {
+                        UpdateStatus(StatusType.LISTENING);
                         System.gc();
-                        result = null;
-                        received = new Date();
                         try
                         {
-                            while (result == null)
+                            while (dataPackage == null)
                             {
+                                UpdateStatus(StatusType.LISTENING);
                                 if (AwaitingCancellation) break;
                                 if (Socket.getInputStream().available() > 0)
                                 {
-                                    result = Read();
-                                    received = new Date(System.currentTimeMillis());
+                                    UpdateStatus(StatusType.RECEIVING);
+                                    dataPackage = new DataPackage();
+                                    dataPackage.Data = Read();
+                                    dataPackage.ReceivedTime = new Date(System.currentTimeMillis());
                                 }
                             }
                         }
                         catch (Exception ex)
                         {
-                            AnnounceException(ex);
+                            broadcastException(ex);
                         }
                         if (AwaitingCancellation) break;
-                        if (result != null)
+                        if (dataPackage != null)
                         {
-                            for (ConnectionListener l : listeners)
-                                l.onDataReceived(result, received, sender);
-                            if (!IsDataConnection || (MaximumUMSize > -1 && result.length <= MaximumUMSize)) ProcessMessage(result, received, IsDataConnection);
+                            System.gc();
+                            broadcastPackage(dataPackage);
                         }
                     } while (Socket.isConnected());
                     if (!AwaitingCancellation)
@@ -198,109 +228,15 @@ public class Connection{
                 }
                 catch (Exception ex)
                 {
-                    AnnounceException(ex);
+                    broadcastException(ex);
                 } finally {
-                    IsWaitingForData = false;
+                    _IsWaitingForData = false;
+                    if (Socket.isConnected()) UpdateStatus(StatusType.CONNECTED);
                 }
             }
         }).start();
     }
-
-    public boolean CriticalDebug = false;
-    private void ProcessMessage(byte[] data, Date sent, boolean urgentMessage)
-    {
-        String message = new String(data, 0, data.length);
-        boolean pool = false;
-        if (message.equalsIgnoreCase("[GOODBYE]"))
-        {
-            pool = true;
-            Disconnect();
-        }
-        else if (message.equalsIgnoreCase("[LOGIN_OK]"))
-        {
-            pool = true;
-            IsLoggedIn = true;
-            Log("Successfully logged in!");
-            for (ConnectionListener l : listeners)
-                l.onLoginResponse(IsLoggedIn, this);
-        }
-        else if (message.startsWith("[LOGIN_REJECT]"))
-        {
-            pool = true;
-            IsLoggedIn = false;
-            Log("Login request was rejected with status '" + message.substring("[LOGIN_REJECT]".length()) + "'");
-            for (ConnectionListener l : listeners)
-                l.onLoginResponse(IsLoggedIn, this);
-            Disconnect();
-        }
-        else if (message.startsWith("[QUERY]"))
-        {
-            message = message.substring("[QUERY]".length());
-            if (message == "IsDataConnection")
-            {
-                pool = true;
-                SendMessage("[QUERY_RESULT]" + String.valueOf(IsDataConnection));
-            }
-        }
-        if ((pool && CriticalDebug) || (!urgentMessage && !pool))
-            for(ConnectionListener l : listeners)
-                l.onMessageReceived(new Message(message, sent), this);
-    }
-
-    public String Username;
-    public String Password;
-    public void Login(String username, String password, boolean encryptPassword){
-        Username = username;
-        Password = password;
-        String message = "[LOGIN_REQUEST]" + username + ":" + (encryptPassword ? GetMD5OfString(password) : password);
-        SendMessage(message);
-    }
-    private String GetMD5OfString(String string){
-        byte[] digest = GetMD5(string.getBytes());
-        StringBuffer sb = new StringBuffer();
-        for (byte b : digest) {
-            sb.append(String.format("%02x", b & 0xff));
-        }
-        return sb.toString();
-    }
-    private byte[] GetMD5(byte[] data){
-        byte[] result = null;
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            md.update(data);
-            result = md.digest();
-        }
-        catch (Exception ignored){
-
-        }
-        return result;
-    }
-    public void Disconnect(){
-        try {
-            if (Socket != null && Socket.isConnected()) {
-                SendMessage("[GOODBYE]");
-                Socket.shutdownInput();
-                Socket.shutdownOutput();
-            }
-            Socket.close();
-        } catch (Exception ignored){
-
-        } finally {
-            IsLoggedIn = false;
-            Log("Disconnected from server.");
-        }
-    }
-    public String ReadMessage()
-    {
-        try{
-            byte[] data = Read();
-            return new String(data, 0, data.length);
-        }
-        catch (Exception ignored){
-            return "";
-        }
-    }
-    public byte[] Read() {
+    byte[] Read() {
         System.gc();
 
         try {
@@ -341,13 +277,10 @@ public class Connection{
             return null;
         }
     }
-    public String LastQUERY;
-    public void SendMessage(String msg)
-    {
-        if (msg.startsWith("[QUERY]")) LastQUERY = msg;
-        Send(msg.getBytes());
-    }
     public void Send(byte[] data){
+        System.gc();
+        final StatusType status = _Status;
+        UpdateStatus(StatusType.SENDING);
         final byte[] finalData = data;
         Thread thread = new Thread(new Runnable() {
             @Override
@@ -369,10 +302,12 @@ public class Connection{
                     Socket.getOutputStream().write(finalData);
                 } catch (Exception ignored){
 
+                } finally {
+                    System.gc();
+                    UpdateStatus(status);
                 }
             }
         });
         thread.start();
-        System.gc();
     }
 }
