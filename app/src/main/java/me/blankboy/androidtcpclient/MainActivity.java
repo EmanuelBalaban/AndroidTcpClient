@@ -2,10 +2,17 @@ package me.blankboy.androidtcpclient;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
 import android.os.Vibrator;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -14,6 +21,7 @@ import android.widget.*;
 
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
+import com.journeyapps.barcodescanner.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -116,6 +124,7 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
                                 sendSelectedFile = false;
                                 byte[] fileData = readAllBytes(result);
                                 SecondaryServer.Send(fileData);
+                                System.gc();
                             }
                         }
                     }
@@ -168,7 +177,7 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
     }
 
     String getFolderPath(String fname){
-        return getFilesDir() + File.separator + fname;
+        return Environment.getExternalStorageDirectory() + File.separator + fname;
     }
     public void createFolder(String fname) {
         String myfolder = getFolderPath(fname);
@@ -260,7 +269,7 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
         }
     }
     void selectFile(){
-        Intent n = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        Intent n = new Intent(Intent.ACTION_GET_CONTENT); //Intent.ACTION_OPEN_DOCUMENT
         n.addCategory(Intent.CATEGORY_OPENABLE);
         n.setType("*/*");
         startActivityForResult(n, READ_REQUEST_CODE);
@@ -294,19 +303,14 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == READ_REQUEST_CODE) {
-                // The document selected by the user won't be returned in the intent.
-                // Instead, a URI to that document will be contained in the return intent
-                // provided to this method as a parameter.
-                // Pull that URI using resultData.getData().
-                Uri uri = null;
                 if (intent != null) {
-                    uri = intent.getData();
-                    result = uri;
-                    String filename = getFileName(uri);
+                    result = intent.getData();
+                    String filename = getFileName(this, result);
                     byte[] data = readAllBytes(result);
                     Log("\nSelected: " + filename);
-                    lastCommand = "[COMMAND]RECEIVE:" + getFileName(result) + ":" + getMD5Hash(data) + ":" + data.length;
+                    lastCommand = "[COMMAND]RECEIVE:" + filename + ":" + getMD5Hash(data) + ":" + data.length;
                     SecondaryServer.SendMessage(lastCommand);
+                    System.gc();
                 }
             } else {
                 IntentResult scanResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
@@ -323,6 +327,12 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
             }
         }
     }
+    String getFileName(Context context, Uri fileUri){
+        String filename = FileUtils.getRealPathFromUri(this, result);
+        if (filename.contains("/"))
+            filename = filename.substring(filename.lastIndexOf("/") + 1);
+        return  filename;
+    }
     String getMD5Hash(byte[] value){
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -337,25 +347,6 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
         catch (Exception ex){
             return null;
         }
-    }
-    String getFileName(Uri uri){
-        String lastScheme = uri.getLastPathSegment();
-        try{
-            if (lastScheme.contains(":")) lastScheme = lastScheme.substring(lastScheme.lastIndexOf(":") + 1);
-        }
-        catch (Exception ex){
-
-        }
-        try{
-            if (lastScheme.contains("/")) {
-                String[] list = lastScheme.split("/");
-                lastScheme = list[list.length - 1];
-            }
-        }
-        catch (Exception ex){
-
-        }
-        return lastScheme;
     }
     public void vibrate(int milliseconds) {
         ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);

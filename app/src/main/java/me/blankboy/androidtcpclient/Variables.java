@@ -8,7 +8,6 @@ public class Variables {
     public static Connection PrimaryServer; // And this is for communications.
     public static Connection SecondaryServer; // This is for data transfers.
     public static boolean isSet = false;
-
     public static boolean IsServerLoggedIn(){
         if (IsServerConnected() && PrimaryServer.IsLoggedIn) return true;
         return false;
