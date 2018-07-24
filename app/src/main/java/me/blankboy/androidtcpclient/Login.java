@@ -27,7 +27,7 @@ public class Login extends AppCompatActivity {
         if (password.contains(":")) passwordBox.setError("Password cannot contain ':'");
         if (usernameBox.getError() != null || passwordBox.getError() != null) return;
 
-        Variables.PrimaryServer.Login(username, password);
+        Variables.PrimaryServer.Login(username, password, true);
 
         finish();
     }

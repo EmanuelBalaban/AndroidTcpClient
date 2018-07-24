@@ -2,17 +2,11 @@ package me.blankboy.androidtcpclient;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.ContentResolver;
-import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Environment;
 import android.os.Vibrator;
-import android.provider.DocumentsContract;
-import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -21,7 +15,6 @@ import android.widget.*;
 
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
-import com.journeyapps.barcodescanner.Util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -43,17 +36,12 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        if (IsServerConnected())
-            Log("Connected to saved server " + PrimaryServer.UniqueIdentity());
+        //if (IsServerConnected()) Log("Connected to saved server " + PrimaryServer.UniqueIdentity());
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        Intent resultIntent = new Intent();
-        //resultIntent.putExtra(...);  // put data that you want returned to activity A
-        setResult(Activity.RESULT_OK, resultIntent);
     }
 
     @Override
@@ -68,9 +56,11 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
                         SecondaryServer = new Connection(ar[0], Integer.valueOf(ar[1]));
                         SecondaryServer.IsDataConnection = true;
                         SecondaryServer.Connect();
-                        //SecondaryServer.Login(sender.Username, sender.Password);
-                        SecondaryServer.IsLoggedIn = true;
+                        SecondaryServer.Login(FileUtils.getIPAddress(true), String.valueOf(sender.Socket.getLocalPort()), false);
+
+                        //SecondaryServer.IsLoggedIn = true;
                         while (!SecondaryServer.IsLoggedIn) ;
+                        Log("\nAuthenticated to data channel!");
                         SecondaryServer.addListener(this);
                     }
                 }

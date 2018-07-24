@@ -1,9 +1,12 @@
-package me.blankboy.tcpclient;
+package me.blankboy.tcpclientv2;
 
-import java.net.*;
-import java.nio.ByteBuffer;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.security.MessageDigest;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
 
 public class Connection{
     /*
