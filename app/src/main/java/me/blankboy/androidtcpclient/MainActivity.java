@@ -5,7 +5,166 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.Environment;
+import android.os.Bundle;
+import android.os.Vibrator;
+import android.support.v7.app.AppCompatActivity;
+import android.view.*;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.*;
+
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
+
+import java.util.Objects;
+
+import me.blankboy.extensions.Channel;
+import me.blankboy.extensions.ChannelListener;
+import me.blankboy.extensions.Message;
+import me.blankboy.tcpclientv2.*;
+
+public class MainActivity extends AppCompatActivity implements ChannelListener, LogReceiver {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    // Channel stuff
+    @Override
+    public void onMessageReceived(Message message, Channel sender) {
+        Log("\nServer: " + message.Text);
+    }
+
+    public  void onClick(View view){
+        int id = view.getId();
+        if (id == R.id.sendFile){
+            if (Variables.Server == null || Variables.Server.Secondary == null || !Variables.Server.Secondary.IsConnected()) {
+                Log("\nCannot send file if not connected to server!");
+                return;
+            }
+
+            final EditText messField = findViewById(R.id.messageEditText);
+            hideKeyboardFrom(this, messField);
+
+            selectFile();
+        }
+        if (id == R.id.sendButton) {
+            if (Variables.Server == null || Variables.Server.Primary == null || !Variables.Server.Primary.IsConnected()) {
+                Log("\nCannot send message if not connected to server!");
+                return;
+            }
+
+            final EditText messField = findViewById(R.id.messageEditText);
+            final String message = messField.getText().toString();
+            messField.setText("");
+            hideKeyboardFrom(this, messField);
+
+            if (message.equals("")) {
+                Log("\nPlease enter a message!");
+                return;
+            }
+
+            Variables.Server.SendMessage(message);
+            Log("\nYou: " + message);
+        }
+        if (id == R.id.connectButton){
+            final String hostname = ((EditText) findViewById(R.id.ipEditText)).getText().toString();
+            final Integer port = Integer.valueOf(((EditText) findViewById(R.id.portEditText)).getText().toString());
+
+            ClearConsole();
+
+            Log("Connecting to " + hostname + ":" + port + "...");
+
+            Variables.Server = new Channel(hostname, port, getContentResolver());
+            Variables.Server.Console.addListener(this);
+            Variables.Server.addListener(this);
+        }
+        if (id == R.id.connectQRButton){
+            IntentIntegrator integrator = new IntentIntegrator(this);
+            integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE_TYPES);
+            integrator.setPrompt("Scan qr code displayed on server page to connect!");
+            integrator.initiateScan();
+        }
+    }
+
+    void selectFile(){
+        Intent n = new Intent(Intent.ACTION_GET_CONTENT); //Intent.ACTION_OPEN_DOCUMENT
+        n.addCategory(Intent.CATEGORY_OPENABLE);
+        n.setType("* /*");
+        startActivityForResult(n, READ_REQUEST_CODE);
+    }
+
+    private static final int READ_REQUEST_CODE = 42;
+
+    public void onActivityResult(int requestCode, int resultCode, Intent intent) {
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == READ_REQUEST_CODE) {
+                if (intent != null) {
+                    // Here last time
+                    Uri result = intent.getData();
+                    try {
+                        Variables.Server.SendFile(result, this);
+                    } catch (Exception e) {
+                        Log("\n" + e.toString());
+                    }
+                    System.gc();
+                }
+            } else {
+                IntentResult scanResult = IntentIntegrator.parseActivityResult(requestCode, resultCode, intent);
+                if (scanResult != null) {
+                    vibrate(250);
+                    String result = scanResult.getContents();
+                    Log("QRCode: " + result);
+                    if (result.contains(":")) {
+                        ((TextView) findViewById(R.id.ipEditText)).setText(result.split(":")[0]);
+                        ((TextView) findViewById(R.id.portEditText)).setText(result.split(":")[1]);
+                        onClick(findViewById(R.id.connectButton));
+                    }
+                }
+            }
+        }
+    }
+
+    public void vibrate(int milliseconds) {
+        ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
+    }
+    @SuppressLint("SetTextI18n")
+    public void Log(String text){
+        final String text2 = text;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                TextView console = findViewById(R.id.debugText);
+                console.setText(console.getText() + text2);
+                console.invalidate();
+            }
+        });
+    }
+    public  void ClearConsole(){
+        final TextView console = findViewById(R.id.debugText);
+        console.setText("");
+    }
+    public static void hideKeyboardFrom(Context context, View view) {
+        ((InputMethodManager) Objects.requireNonNull(context.getSystemService(Activity.INPUT_METHOD_SERVICE))).hideSoftInputFromWindow(view.getWindowToken(), 0);
+    }
+
+    @Override
+    public void onLogReceived(Log log) {
+        Log("\n" + log.toString("[{type}] {text}", Log.DateFormat));
+    }
+}
+/*
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Vibrator;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -16,12 +175,8 @@ import android.widget.*;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.security.MessageDigest;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Objects;
@@ -250,7 +405,7 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
     void selectFile(){
         Intent n = new Intent(Intent.ACTION_GET_CONTENT); //Intent.ACTION_OPEN_DOCUMENT
         n.addCategory(Intent.CATEGORY_OPENABLE);
-        n.setType("*/*");
+        n.setType("* /*");
         startActivityForResult(n, READ_REQUEST_CODE);
     }
 
@@ -311,4 +466,4 @@ public class MainActivity extends AppCompatActivity implements ConnectionListene
     public static void hideKeyboardFrom(Context context, View view) {
         ((InputMethodManager) Objects.requireNonNull(context.getSystemService(Activity.INPUT_METHOD_SERVICE))).hideSoftInputFromWindow(view.getWindowToken(), 0);
     }
-}
+}*/

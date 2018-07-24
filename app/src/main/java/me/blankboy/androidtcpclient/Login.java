@@ -11,7 +11,7 @@ public class Login extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        ((TextView) findViewById(R.id.title)).setText("Login to " + Variables.PrimaryServer.UniqueIdentity());
+        //((TextView) findViewById(R.id.title)).setText("Login to " + Variables.PrimaryServer.UniqueIdentity());
     }
 
     void onLoginClick(View view) {
@@ -27,7 +27,7 @@ public class Login extends AppCompatActivity {
         if (password.contains(":")) passwordBox.setError("Password cannot contain ':'");
         if (usernameBox.getError() != null || passwordBox.getError() != null) return;
 
-        Variables.PrimaryServer.Login(username, password, true);
+        //Variables.PrimaryServer.Login(username, password, true);
 
         finish();
     }
