@@ -1,28 +1,31 @@
 package me.blankboy.tcpclientv2;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
 
-public class Log{
-    public Log(String Text, LogType Type, Date Time){
-        this.Text = Text;
-        this.Type = Type;
-        this.Time = Time;
-    }
-    public Log(String Text, LogType Type){
-        this.Text = Text;
-        this.Type = Type;
-        this.Time = new Date(System.currentTimeMillis());
-    }
+public class Log implements Comparable<Log> {
+    public LogType Type;
     public String Text;
     public Date Time;
-    public LogType Type;
+
+    public static final String Format = "{date} - {type} - {text}";
+    public static final String DateFormat = "HH:mm:ss";
+
     @Override
-    public String toString()
-    {
-        String format = "{date} - {type} - {text}";
-        String dateFormat = "HH:mm:ss";
-        // You have to convert from milliseconds to secs and mins and hours
-        // return format.replace("{date}", Time.toString(dateFormat)).replace("{type}", Type.toString()).replace("{text}", Text);
-        return Text;
+    public int compareTo(Log other) {
+        if (other.Time == null) return 1;
+        if (Time == null) return -1;
+        if (other.Time == Time) return 0;
+        return other.Time.before(Time) ? 1 : -1;
+    }
+
+    @Override // string format="{date} - {type} - {text}", string dateFormat="HH:mm:ss"
+    public String toString() {
+        return toString(Format.toString(), DateFormat.toString());
+    }
+
+    public String toString(String format, String dateFormat){
+        SimpleDateFormat df =  new SimpleDateFormat(dateFormat);
+        return format.replace("{date}", df.format(Time)).replace("{type}", (Type != LogType.NULL ? Type.toString() : "")).replace("{text}", Text);
     }
 }
