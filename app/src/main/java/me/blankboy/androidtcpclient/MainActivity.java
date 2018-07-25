@@ -22,7 +22,7 @@ import me.blankboy.extensions.ChannelListener;
 import me.blankboy.extensions.Message;
 import me.blankboy.tcpclientv2.*;
 
-public class MainActivity extends AppCompatActivity implements ChannelListener, LogReceiver {
+public class MainActivity extends AppCompatActivity implements ChannelListener, LogReceiver, ConnectionListener {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,12 +35,7 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
         super.onPause();
     }
 
-    // Channel stuff
-    @Override
-    public void onMessageReceived(Message message, Channel sender) {
-        Log("\nServer: " + message.Text);
-    }
-
+    // Methods
     public  void onClick(View view){
         int id = view.getId();
         if (id == R.id.sendFile){
@@ -71,7 +66,6 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
             }
 
             Variables.Server.SendMessage(message);
-            Log("\nYou: " + message);
         }
         if (id == R.id.connectButton){
             final String hostname = ((EditText) findViewById(R.id.ipEditText)).getText().toString();
@@ -81,9 +75,15 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
 
             Log("Connecting to " + hostname + ":" + port + "...");
 
-            Variables.Server = new Channel(hostname, port, getContentResolver());
-            Variables.Server.Console.addListener(this);
-            Variables.Server.addListener(this);
+            try {
+                Variables.Server = new Channel(hostname, port, getContentResolver());
+                Variables.Server.addListener(this);
+                Variables.Server.Primary.addListener(this);
+                Variables.Server.Console.addListener(this);
+                Variables.Server.Primary.Console.addListener(this);
+            } catch (Exception ex) {
+                Log(" Unable to connect!");
+            }
         }
         if (id == R.id.connectQRButton){
             IntentIntegrator integrator = new IntentIntegrator(this);
@@ -94,9 +94,9 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
     }
 
     void selectFile(){
-        Intent n = new Intent(Intent.ACTION_GET_CONTENT); //Intent.ACTION_OPEN_DOCUMENT
+        Intent n = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         n.addCategory(Intent.CATEGORY_OPENABLE);
-        n.setType("* /*");
+        n.setType("*/*");
         startActivityForResult(n, READ_REQUEST_CODE);
     }
 
@@ -106,7 +106,6 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == READ_REQUEST_CODE) {
                 if (intent != null) {
-                    // Here last time
                     Uri result = intent.getData();
                     try {
                         Variables.Server.SendFile(result, this);
@@ -131,9 +130,6 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
         }
     }
 
-    public void vibrate(int milliseconds) {
-        ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
-    }
     @SuppressLint("SetTextI18n")
     public void Log(String text){
         final String text2 = text;
@@ -150,13 +146,42 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
         final TextView console = findViewById(R.id.debugText);
         console.setText("");
     }
+
+    public void vibrate(int milliseconds) {
+        ((Vibrator) Objects.requireNonNull(getSystemService(VIBRATOR_SERVICE))).vibrate(milliseconds);
+    }
+
     public static void hideKeyboardFrom(Context context, View view) {
         ((InputMethodManager) Objects.requireNonNull(context.getSystemService(Activity.INPUT_METHOD_SERVICE))).hideSoftInputFromWindow(view.getWindowToken(), 0);
+    }
+
+    // Channel stuff
+    @Override
+    public void onMessageReceived(Message message, Channel sender) {
+        Log("\nServer: " + message.Text);
+    }
+    @Override
+    public void onException(Exception ex, Channel sender) {
+        Log("\n" + ex.toString());
     }
 
     @Override
     public void onLogReceived(Log log) {
         Log("\n" + log.toString("[{type}] {text}", Log.DateFormat));
+    }
+
+    // Connection Stuff
+    @Override
+    public void onDataReceived(DataPackage dataPackage, Connection sender) {
+
+    }
+    @Override
+    public void onException(Exception ex, Connection sender) {
+
+    }
+    @Override
+    public void onStatusChanged(StatusType newStatus, Connection sender) {
+
     }
 }
 /*

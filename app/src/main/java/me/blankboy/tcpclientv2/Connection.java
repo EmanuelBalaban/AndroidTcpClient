@@ -7,7 +7,7 @@ import java.util.Date;
 import java.util.List;
 
 public class Connection {
-    private Logger Console = new Logger();
+    public Logger Console = new Logger();
 
     private Socket Socket;
 
@@ -195,8 +195,8 @@ public class Connection {
             public void run() {
                 try
                 {
-                    DataPackage dataPackage = null;
                     do {
+                        DataPackage dataPackage = null;
                         UpdateStatus(StatusType.LISTENING);
                         System.gc();
                         try

@@ -52,13 +52,18 @@ public class Channel implements ConnectionListener {
             l.onMessageReceived(message, this);
     }
 
+    private void broadcastException(Exception ex){
+        for (ChannelListener l : Listeners)
+            l.onException(ex, this);
+    }
+
     public Connection Primary;
     public Connection Secondary;
 
     public LoginState PrimaryLoginState = LoginState.NULL;
     public LoginState SecondaryLoginState = LoginState.NULL;
 
-    public Channel(String hostname, int port, ContentResolver contentResolver){
+    public Channel(String hostname, int port, ContentResolver contentResolver) throws Exception {
         this.contentResolver = contentResolver;
         Primary = new Connection(hostname, port);
         Primary.Connect();
@@ -68,16 +73,26 @@ public class Channel implements ConnectionListener {
     }
 
     public void Disconnect(){
-        if (Primary != null) Primary.Disconnect();
-        if (Secondary != null) Secondary.Disconnect();
-        Console.Log("Disconnected from server!");
+        if (Primary != null) {
+            //Primary.Disconnect();
+        }
+        if (Secondary != null) {
+            //Secondary.Disconnect();
+        }
+        //Console.Log("Disconnected from server!");
         System.gc();
     }
 
     public void SendMessage(String message) {
-        if (Primary == null || !Primary.IsConnected()) return;//throw new Exception("Not connected!");
-        LastMessage = message;
-        Primary.Send(message.getBytes());
+        try {
+            if (Primary == null || !Primary.IsConnected()) throw new Exception("Not connected!");
+            LastMessage = message;
+            Primary.Send(message.getBytes());
+            //Console.Log("You: " + message, LogType.NULL);
+        }
+        catch (Exception ex){
+            broadcastException(ex);
+        }
         System.gc();
     }
 
@@ -105,11 +120,15 @@ public class Channel implements ConnectionListener {
 
     public String Username;
     public String Password;
-    public void Login(String username, String password, boolean encryptPassword){
+    public void Login(String username, String password, boolean encryptPassword) throws Exception {
         Username = username;
         Password = password;
         String message = "[LOGIN_REQUEST]" + username + ":" + (encryptPassword ? Extensions.getMD5Hash(password.getBytes()) : password);
         SendMessage(message);
+    }
+    private void LoginToDataChannel(){
+        if (SecondaryLoginState == LoginState.NULL)
+            Secondary.Send(("[LOGIN_REQUEST]" + Extensions.getIPAddress(true) + ":" + String.valueOf(Primary.getSocket().getLocalPort())).getBytes());
     }
 
     @Override
@@ -117,17 +136,19 @@ public class Channel implements ConnectionListener {
         System.gc();
         if (isUrgentMessage(dataPackage) || sender == Primary){
             String message = new String(dataPackage.Data, 0, dataPackage.Data.length);
+            Console.Log(message, LogType.DEBUG);
 
             boolean pool = false;
             if (message.equalsIgnoreCase("[GOODBYE]"))
             {
                 pool = true;
-                Disconnect();
+                if (sender == Primary) Disconnect();
+                else Secondary.Disconnect();
             }
             else if (message.equalsIgnoreCase("[AUTHENTICATE]")){
                 if (sender == Secondary){
                     pool = true;
-                    Secondary.Send(("[LOGIN_REQUEST]" + Extensions.getIPAddress(true) + String.valueOf(Primary.getSocket().getLocalPort())).getBytes());
+                    LoginToDataChannel();
                 } else {
                     pool = true;
                     broadcastMessage(new Message(message, new Date(System.currentTimeMillis())));
@@ -138,11 +159,15 @@ public class Channel implements ConnectionListener {
             {
                 pool = true;
                 if (sender == Primary) {
-                    PrimaryLoginState = LoginState.OK;
-                    Console.Log("Successfully logged in!");
+                    if (PrimaryLoginState != LoginState.OK) {
+                        PrimaryLoginState = LoginState.OK;
+                        Console.Log("Successfully logged in!");
+                    }
                 } else{
-                    SecondaryLoginState = LoginState.OK;
-                    Console.Log("\nAuthenticated to data channel!");
+                    if (SecondaryLoginState != LoginState.OK) {
+                        SecondaryLoginState = LoginState.OK;
+                        Console.Log("Authenticated to data channel!");
+                    }
                 }
             }
             else if (message.startsWith("[LOGIN_REJECT]"))
@@ -159,8 +184,7 @@ public class Channel implements ConnectionListener {
             else if (message.startsWith("[QUERY]"))
             {
                 String query = message.substring("[QUERY]".length());
-                if (query.equalsIgnoreCase("IsDataConnection"))
-                {
+                if (query.equalsIgnoreCase("IsDataConnection")) {
                     pool = true;
                     SendMessage("[QUERY_RESULT]" + String.valueOf(sender == Secondary));
                 }
@@ -173,15 +197,15 @@ public class Channel implements ConnectionListener {
                     if (result.contains(":")) {
                         String[] ar = result.split(":");
                         if (ar.length >= 2) {
-                            Console.Log("\nReceived data server connection info!");
+                            Console.Log("Received data server connection info!");
 
                             Secondary = new Connection(ar[0], Integer.valueOf(ar[1]));
                             Secondary.Connect();
                             Secondary.addListener(this);
                             Secondary.StartWaiting();
 
-                            String login = "[LOGIN_REQUEST]" + Extensions.getIPAddress(true) + ":" + String.valueOf(Primary.getSocket().getLocalPort());
-                            Secondary.Send(login.getBytes());
+                            //String login = "[LOGIN_REQUEST]" + Extensions.getIPAddress(true) + ":" + String.valueOf(Primary.getSocket().getLocalPort());
+                            //Secondary.Send(login.getBytes());
                         }
                     }
                 }
@@ -230,12 +254,11 @@ public class Channel implements ConnectionListener {
                             }
                             catch(Exception ex)
                             {
-                                Console.Log(ex.toString(), LogType.ERROR);
+                                broadcastException(ex);
                                 incoming = null;
                             }
                         }
-                        if (incoming != null)
-                        {
+                        if (incoming != null) {
                             Console.Log("Incoming file: " + incoming.FileName);
                             SendMessage("[COMMAND]CONFIRM:" + incoming.UniqueIdentity());
                         }
@@ -254,8 +277,8 @@ public class Channel implements ConnectionListener {
                 File file = new File(Variables.GetAppMainDirectory(), filename);
                 try {
                     file.createNewFile();
-                } catch (IOException e) {
-                    Console.Log(e.toString(), LogType.ERROR);
+                } catch (IOException ex) {
+                    broadcastException(ex);
                 }
 
                 try{
@@ -267,6 +290,7 @@ public class Channel implements ConnectionListener {
                     sender.Send(("[COMMAND]COMPLETE:" + incoming.UniqueIdentity()).getBytes());
                     incoming.State = TransferState.COMPLETE;
                 } catch (Exception ex){
+                    broadcastException(ex);
                     sender.Send(("[COMMAND]ERROR:" + incoming.UniqueIdentity()).getBytes());
                 }
             }
