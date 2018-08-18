@@ -1,5 +1,7 @@
 package me.blankboy.androidtcpclient;
 
+import android.app.ActivityManager;
+
 import java.io.File;
 
 import me.blankboy.extensions.*;
@@ -12,8 +14,12 @@ public class Variables {
     }
     public static File GetAppMainDirectory(){
         CheckAppMainDirectory();
-        return new File(AppMainDirectory);
+        return new File(Extensions.getInternalFolderPath(AppMainDirectory));
     }
+
+    public static File FilesDir;
+
+    public static ActivityManager activityManager;
 
     public static Logger Console = new Logger();
 

@@ -3,16 +3,22 @@ package me.blankboy.extensions;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.net.Uri;
+import android.util.Log;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 import me.blankboy.androidtcpclient.Variables;
 import me.blankboy.tcpclientv2.*;
+
+import static android.support.constraint.Constraints.TAG;
 
 public class Channel implements ConnectionListener {
     public static final int UrgentMessageSize = 1024;
@@ -26,14 +32,23 @@ public class Channel implements ConnectionListener {
     public String LastMessage;
 
     private FileTransfer searchFileTransfer(String UniqueIdentity, TransferState State, List<FileTransfer> list){
-        for (FileTransfer item : list)
-            if (item.UniqueIdentity() == UniqueIdentity && item.State.equals(State))
+        //Console.Log("Searching for " + UniqueIdentity + ":" + String.valueOf(State));
+        for (FileTransfer item : list){
+            if (item.UniqueIdentity().equals(UniqueIdentity) && item.State.equals(State))
                 return item;
+        }
         return null;
     }
     private FileTransfer searchFileTransfer(byte[] data, TransferState State, List<FileTransfer> list){
         for (FileTransfer item : list)
             if (item.Equals(data) && item.State.equals(State))
+                return item;
+        return null;
+    }
+    private FileTransfer searchFileTransfer(File file, TransferState State, List<FileTransfer> list) throws FileNotFoundException {
+        InputStream is = new FileInputStream(file);
+        for (FileTransfer item : list)
+            if (item.Equals(is, (int) file.length()) && item.State.equals(State))
                 return item;
         return null;
     }
@@ -88,7 +103,7 @@ public class Channel implements ConnectionListener {
             if (Primary == null || !Primary.IsConnected()) throw new Exception("Not connected!");
             LastMessage = message;
             Primary.Send(message.getBytes());
-            //Console.Log("You: " + message, LogType.NULL);
+            Console.Log("You: " + message, LogType.NULL);
         }
         catch (Exception ex){
             broadcastException(ex);
@@ -134,6 +149,10 @@ public class Channel implements ConnectionListener {
     @Override
     public void onDataReceived(DataPackage dataPackage, Connection sender) {
         System.gc();
+        if (dataPackage.isCached) {
+            Console.Log("Cached file!");
+        }
+        if (dataPackage.Data == null || dataPackage.Data.length == 0) return;
         if (isUrgentMessage(dataPackage) || sender == Primary){
             String message = new String(dataPackage.Data, 0, dataPackage.Data.length);
             Console.Log(message, LogType.DEBUG);
@@ -186,7 +205,7 @@ public class Channel implements ConnectionListener {
                 String query = message.substring("[QUERY]".length());
                 if (query.equalsIgnoreCase("IsDataConnection")) {
                     pool = true;
-                    SendMessage("[QUERY_RESULT]" + String.valueOf(sender == Secondary));
+                    sender.Send(("[QUERY_RESULT]" + String.valueOf(sender == Secondary)).getBytes());
                 }
             }
             else if (message.startsWith("[QUERY_RESULT]")){
@@ -210,7 +229,7 @@ public class Channel implements ConnectionListener {
                     }
                 }
             }
-            else if ((PrimaryLoginState == LoginState.OK && sender == Primary) || (SecondaryLoginState == LoginState.OK && sender == Secondary))
+            else if ((sender == Primary && PrimaryLoginState == LoginState.OK) || (sender == Secondary && SecondaryLoginState == LoginState.OK))
             {
                 if (message.startsWith("[COMMAND]"))
                 {
@@ -260,7 +279,7 @@ public class Channel implements ConnectionListener {
                         }
                         if (incoming != null) {
                             Console.Log("Incoming file: " + incoming.FileName);
-                            SendMessage("[COMMAND]CONFIRM:" + incoming.UniqueIdentity());
+                            sender.Send(("[COMMAND]CONFIRM:" + incoming.UniqueIdentity()).getBytes());
                         }
                     }
                 }
@@ -268,30 +287,66 @@ public class Channel implements ConnectionListener {
                 if ((pool && CriticalDebug) || (!isUrgentMessage(dataPackage) && !pool))
                     broadcastMessage(new Message(message, dataPackage.ReceivedTime));
             }
-        } else if (SecondaryLoginState == LoginState.OK){
-            FileTransfer incoming = searchFileTransfer(dataPackage.Data, TransferState.REGISTER, IncomingFiles);
-            if (incoming != null)
-            {
-                String filename = incoming.FileName;
+        }
+        if (sender == Secondary && SecondaryLoginState == LoginState.OK){
+            if (dataPackage.isCached){
+                Console.Log("Cached file!");
+                File file = new File(new String(dataPackage.Data, 0, dataPackage.Data.length));
+                if (file.exists()) {
+                    FileTransfer incoming = null;
+                    try {
+                        incoming = searchFileTransfer(file, TransferState.REGISTER, IncomingFiles);
+                    } catch (FileNotFoundException e) {
+                        Console.Log(e.toString(), LogType.ERROR);
+                    }
 
-                File file = new File(Variables.GetAppMainDirectory(), filename);
-                try {
-                    file.createNewFile();
-                } catch (IOException ex) {
-                    broadcastException(ex);
+                    if (incoming != null){
+                        File originalFile = new File(Variables.GetAppMainDirectory(), incoming.FileName);
+
+                        try {
+                            file.createNewFile();
+                        } catch (IOException ex) {
+                            broadcastException(ex);
+                        }
+
+                        try {
+                            Extensions.copy(file, originalFile);
+
+                            Console.Log("Successfully downloaded file '" + incoming.FileName + "'");
+                            sender.Send(("[COMMAND]COMPLETE:" + incoming.UniqueIdentity()).getBytes());
+                            incoming.State = TransferState.COMPLETE;
+                        } catch (Exception ex) {
+                            broadcastException(ex);
+                            sender.Send(("[COMMAND]ERROR:" + incoming.UniqueIdentity()).getBytes());
+                        } finally {
+                            file.delete();
+                        }
+                    }
                 }
+            } else {
+                FileTransfer incoming = searchFileTransfer(dataPackage.Data, TransferState.REGISTER, IncomingFiles);
+                if (incoming != null) {
+                    String filename = incoming.FileName;
 
-                try{
-                    FileOutputStream outputStream = new FileOutputStream(file);
-                    outputStream.write(dataPackage.Data);
-                    outputStream.close();
+                    File file = new File(Variables.GetAppMainDirectory(), filename);
+                    try {
+                        file.createNewFile();
+                    } catch (IOException ex) {
+                        broadcastException(ex);
+                    }
 
-                    Console.Log("Successfully downloaded file '" + filename + "'");
-                    sender.Send(("[COMMAND]COMPLETE:" + incoming.UniqueIdentity()).getBytes());
-                    incoming.State = TransferState.COMPLETE;
-                } catch (Exception ex){
-                    broadcastException(ex);
-                    sender.Send(("[COMMAND]ERROR:" + incoming.UniqueIdentity()).getBytes());
+                    try {
+                        FileOutputStream outputStream = new FileOutputStream(file);
+                        outputStream.write(dataPackage.Data);
+                        outputStream.close();
+
+                        Console.Log("Successfully downloaded file '" + filename + "'");
+                        sender.Send(("[COMMAND]COMPLETE:" + incoming.UniqueIdentity()).getBytes());
+                        incoming.State = TransferState.COMPLETE;
+                    } catch (Exception ex) {
+                        broadcastException(ex);
+                        sender.Send(("[COMMAND]ERROR:" + incoming.UniqueIdentity()).getBytes());
+                    }
                 }
             }
         }
@@ -299,6 +354,7 @@ public class Channel implements ConnectionListener {
     }
     @Override
     public void onException(Exception ex, Connection sender) {
+        Log.e(TAG, "", ex);
         Console.Log(ex.toString(), LogType.ERROR);
     }
     @Override

@@ -2,6 +2,7 @@ package me.blankboy.androidtcpclient;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -28,6 +29,8 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        Variables.activityManager = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+        Variables.FilesDir = getFilesDir();
     }
 
     @Override
@@ -65,6 +68,8 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
                 return;
             }
 
+            if (Variables.Server.Secondary != null)
+                Variables.Server.Secondary.Console.addListener(this);
             Variables.Server.SendMessage(message);
         }
         if (id == R.id.connectButton){
@@ -167,13 +172,14 @@ public class MainActivity extends AppCompatActivity implements ChannelListener, 
 
     @Override
     public void onLogReceived(Log log) {
-        Log("\n" + log.toString("[{type}] {text}", Log.DateFormat));
+        Log("\n" + (log.Type != LogType.NULL ? log.toString("[{type}] {text}", Log.DateFormat) : log.toString("{text}", Log.DateFormat)));
     }
 
     // Connection Stuff
     @Override
     public void onDataReceived(DataPackage dataPackage, Connection sender) {
-
+        if (dataPackage.isCached)
+            Log("\nCached file!");
     }
     @Override
     public void onException(Exception ex, Connection sender) {

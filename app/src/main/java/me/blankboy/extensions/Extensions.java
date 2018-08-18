@@ -1,6 +1,7 @@
 package me.blankboy.extensions;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityManager;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
@@ -11,17 +12,80 @@ import android.os.Environment;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 
+import com.google.android.gms.common.util.Hex;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.List;
 
+import me.blankboy.androidtcpclient.Variables;
+
+import static android.content.Context.ACTIVITY_SERVICE;
+
 public class Extensions {
+    public static int LimitToRange(int value, int inclusiveMinimum, int inclusiveMaximum)
+    {
+        if (value < inclusiveMinimum) { return inclusiveMinimum; }
+        if (value > inclusiveMaximum) { return inclusiveMaximum; }
+        return value;
+    }
+
+    public static void copy(File src, File dst) throws IOException {
+        InputStream in = new FileInputStream(src);
+        try {
+            OutputStream out = new FileOutputStream(dst);
+            try {
+                // Transfer bytes from in to out
+                byte[] buf = new byte[1024];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    out.write(buf, 0, len);
+                }
+            } finally {
+                out.close();
+            }
+        } finally {
+            in.close();
+        }
+    }
+
+    public static double getAvailableRamInMegs(){
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        Variables.activityManager.getMemoryInfo(mi);
+        double availableMegs = mi.availMem / 0x100000L;
+        return availableMegs;
+    }
+
+    public static String getMD5Hash(InputStream is, int byteArraySize) throws IOException {
+        MessageDigest md = null;
+        try {
+            md = MessageDigest.getInstance("MD5");
+        } catch (NoSuchAlgorithmException e) {
+
+        }
+        md.reset();
+        byte[] bytes = new byte[byteArraySize];
+        int numBytes;
+        while ((numBytes = is.read(bytes)) != -1) {
+            md.update(bytes, 0, numBytes);
+        }
+        byte[] digest = md.digest();
+        StringBuffer sb = new StringBuffer();
+        for (byte b : digest) {
+            sb.append(String.format("%02x", b & 0xff));
+        }
+        return sb.toString();
+    }
 
     public static String getMD5Hash(byte[] value){
         try {

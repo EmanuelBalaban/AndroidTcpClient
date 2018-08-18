@@ -1,10 +1,30 @@
 package me.blankboy.tcpclientv2;
+import android.os.Environment;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.OpenOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+
+import me.blankboy.androidtcpclient.Variables;
+import me.blankboy.extensions.Extensions;
 
 public class Connection {
     public Logger Console = new Logger();
@@ -201,16 +221,16 @@ public class Connection {
                         System.gc();
                         try
                         {
-                            while (dataPackage == null)
+                            while (true)//dataPackage == null)
                             {
                                 UpdateStatus(StatusType.LISTENING);
                                 if (AwaitingCancellation) break;
                                 if (Socket.getInputStream().available() > 0)
                                 {
                                     UpdateStatus(StatusType.RECEIVING);
-                                    dataPackage = new DataPackage();
-                                    dataPackage.Data = Read();
-                                    dataPackage.ReceivedTime = new Date(System.currentTimeMillis());
+                                    Read();
+                                    //dataPackage.Data = Read();
+                                    //dataPackage.ReceivedTime = new Date(System.currentTimeMillis());
                                 }
                             }
                         }
@@ -236,59 +256,164 @@ public class Connection {
                 } finally {
                     _IsWaitingForData = false;
                     if (Socket.isConnected()) UpdateStatus(StatusType.CONNECTED);
+                    if (!AwaitingCancellation) StartWaiting();
                 }
             }
         }).start();
     }
-    byte[] Read() {
-        System.gc();
 
+    public HashMap<Long, byte[]> SavedPackages = new HashMap<>();
+
+    void ProcessPackage(DataPackage dp){
+        byte[] result = dp.Data;
+        if (SavedPackages.containsKey(dp.UniqueID)){
+            byte[] saved = SavedPackages.get(dp.UniqueID);
+            result = new byte[saved.length + dp.Data.length];
+            System.arraycopy(saved, 0, result, 0, saved.length);
+            System.arraycopy(dp.Data, 0, result, saved.length, dp.Data.length);
+        }
+        if (dp.isMore)
+            SavedPackages.put(dp.UniqueID, result);
+        else{
+            SavedPackages.remove(dp.UniqueID);
+            dp.Data = result;
+            dp.isMore = false;
+            dp.isCached = false;
+            dp.ReceivedTime = new Date(System.currentTimeMillis());
+            broadcastPackage(dp);
+        }
+    }
+
+    int ReadMessageSize(InputStream bf){
+        int messagesize = 0;
         try {
+            BufferedInputStream in = new BufferedInputStream(bf);
+
             byte[] sizeinfo = new byte[4];
 
-            int totalread, currentread;
-
-
-            currentread = totalread = Socket.getInputStream().read(sizeinfo);
+            int currentread, totalread = 0;
+            currentread = totalread = in.read(sizeinfo);
 
             while (totalread < sizeinfo.length && currentread > 0) {
-                currentread = Socket.getInputStream().read(sizeinfo, totalread, sizeinfo.length - totalread);
-
-
+                currentread = in.read(sizeinfo, totalread, sizeinfo.length - totalread);
                 totalread += currentread;
             }
-
-            int messagesize = 0;
 
             messagesize |= sizeinfo[0];
             messagesize |= (((int) sizeinfo[1]) << 8);
             messagesize |= (((int) sizeinfo[2]) << 16);
             messagesize |= (((int) sizeinfo[3]) << 24);
+        }
+        catch (Exception ex){
+
+        }
+        finally {
+            return messagesize;
+        }
+    }
+
+    void Read() throws IOException {
+        DataPackage result = new DataPackage();
+        result.UniqueID = System.currentTimeMillis();
+        result.ReceivedTime = new Date(result.UniqueID);
+
+        InputStream in = Socket.getInputStream();
+        BufferedInputStream bf = new BufferedInputStream(in);
+
+        int messagesize = ReadMessageSize(in);
+        if (messagesize <= 0) return;
+
+        byte[] buffer = new byte[Extensions.LimitToRange(messagesize, 0, DataPackage.Buffer)];
+        int bytesRead, totalread = 0;
+
+        // here i could use same size info method
+        while (totalread < messagesize && (bytesRead = bf.read(buffer)) > 0) {
+            result.isMore = true;
+            if (result.Data != null) ProcessPackage(result);
+            result.Data = Arrays.copyOf(buffer, bytesRead);
+
+            totalread += buffer.length;//bytesRead;
+            buffer = new byte[Extensions.LimitToRange(messagesize - totalread, 0, DataPackage.Buffer)];
+        }
+        result.isMore = false;
+        if (result.Data != null) ProcessPackage(result);
+
+        /*
+        byte[] sizeinfo = new byte[4];
+        int messagesize = 0;
+        int currentread, totalread = 0;
+        currentread = totalread = in.read(sizeinfo);
+
+        while (totalread < sizeinfo.length && currentread > 0) {
+            currentread = in.read(sizeinfo, totalread, sizeinfo.length - totalread);
+            totalread += currentread;
+        }
+
+        messagesize |= sizeinfo[0];
+        messagesize |= (((int) sizeinfo[1]) << 8);
+        messagesize |= (((int) sizeinfo[2]) << 16);
+        messagesize |= (((int) sizeinfo[3]) << 24);
+
+        if (messagesize <= 0) return null;
+
+        if (messagesize >= Runtime.getRuntime().maxMemory()) {
+            File file = new File(Variables.FilesDir, System.currentTimeMillis() + ".cache");
+            OutputStream output = new FileOutputStream(file);
+            BufferedOutputStream bf = new BufferedOutputStream(output);
+
+            int bytesRead;
+
+            InputStream in = Socket.getInputStream();
+
+            if (sizeinfo != null)
+                bf.write(sizeinfo, 0, totalread);
+
+            byte[] buffer = new byte[2048];
+            while ((bytesRead = in.read(buffer)) != -1) {
+                bf.write(buffer, 0, bytesRead);
+                totalread += bytesRead;
+            }
+
+            bf.close();
+            output.close();
+            in.reset();
+
+            result.isCached = true;
+            Console.Log("Cached file!!!!!!!!!!!!!!!!!!");
+            //result.Data = file.getPath().getBytes();
+        }
+        if (messagesize < Runtime.getRuntime().maxMemory()) {
 
             byte[] data = new byte[messagesize];
 
             totalread = 0;
             currentread = totalread = Socket.getInputStream().read(data, totalread, data.length - totalread);
+            System.gc();
 
             while (totalread < messagesize && currentread > 0) {
                 currentread = Socket.getInputStream().read(data, totalread, data.length - totalread);
+                System.gc();
                 totalread += currentread;
             }
 
-            return Arrays.copyOf(data, totalread);
-            //return new String(data, 0, totalread);
-        } catch (Exception ex) {
-            return null;
+            result.Data = Arrays.copyOf(data, totalread);
         }
+        */
+
+        // result.ReceivedTime = new Date(System.currentTimeMillis());
+        // return result;
     }
     public void Send(byte[] data){
+        if (!_IsWaitingForData) StartWaiting();
         System.gc();
-        final StatusType status = _Status;
+        final StatusType Status = _Status;
         UpdateStatus(StatusType.SENDING);
-        final byte[] finalData = data;
+        final byte[] FinalData = data;
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
+                byte[] finalData = FinalData;
+                StatusType status = Status;
                 try {
                     long current = System.currentTimeMillis() / 1000;
                     while (Socket.getInputStream().available() > 0) {
@@ -302,8 +427,16 @@ public class Connection {
                     sizeinfo[1] = (byte)(finalData.length >> 8);
                     sizeinfo[2] = (byte)(finalData.length >> 16);
                     sizeinfo[3] = (byte)(finalData.length >> 24);
+
                     Socket.getOutputStream().write(sizeinfo);
-                    Socket.getOutputStream().write(finalData);
+
+                    int offset = 0;
+                    while (offset < finalData.length){
+                        byte[] buffer = new byte[Extensions.LimitToRange(finalData.length - offset, 0, DataPackage.Buffer)];
+                        System.arraycopy(finalData, 0, buffer, 0, buffer.length);
+                        Socket.getOutputStream().write(buffer);
+                        offset += buffer.length;
+                    }
                 } catch (Exception ignored){
 
                 } finally {
