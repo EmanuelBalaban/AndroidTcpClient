@@ -1,12 +1,9 @@
 package me.blankboy.remotecommunicationutils;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
@@ -164,42 +161,39 @@ public class Connection implements AutoCloseable {
     private void ListenForMessages() throws Exception {
         AwaitingCancellation = false;
         if (_IsWaitingForData) throw new Exception("Already listening for messages!");
-        Thread t = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    _IsWaitingForData = true;
-                    InputStream stream = Socket.getInputStream();
+        Thread t = new Thread(() -> {
+            try {
+                _IsWaitingForData = true;
+                InputStream stream = Socket.getInputStream();
 
-                    while (isStillConnected() && !AwaitingCancellation) {
-                        updateStatus(StatusType.LISTENING);
-                        try {
-                            byte[] size = new byte[Extensions.IntSize];
+                while (isStillConnected() && !AwaitingCancellation) {
+                    updateStatus(StatusType.LISTENING);
+                    try {
+                        byte[] size = new byte[Extensions.IntSize];
 
-                            Extensions.ReadStream(stream, size, size.length);
+                        Extensions.ReadStream(stream, size, size.length);
 
-                            updateStatus(StatusType.RECEIVING);
+                        updateStatus(StatusType.RECEIVING);
 
-                            int messageSize = Extensions.getInt(size, 0);
+                        int messageSize = Extensions.getInt(size, 0);
 
-                            byte[] messageRaw = new byte[messageSize];
+                        byte[] messageRaw = new byte[messageSize];
 
-                            Extensions.ReadStream(stream, messageRaw, messageRaw.length);
+                        Extensions.ReadStream(stream, messageRaw, messageRaw.length);
 
-                            onDataReceived(messageRaw, new Date(System.currentTimeMillis()));
-                        } catch (IOException ex) {
-                            disconnect();
-                            broadcastException(ex);
-                        } catch (Exception ex) {
-                            broadcastException(ex);
-                        }
+                        onDataReceived(messageRaw, new Date(System.currentTimeMillis()));
+                    } catch (IOException ex) {
+                        disconnect();
+                        broadcastException(ex);
+                    } catch (Exception ex) {
+                        broadcastException(ex);
                     }
-                } catch (Exception ex) {
-                    broadcastException(ex);
-                } finally {
-                    _IsWaitingForData = false;
-                    updateStatus(StatusType.CONNECTED);
                 }
+            } catch (Exception ex) {
+                broadcastException(ex);
+            } finally {
+                _IsWaitingForData = false;
+                updateStatus(StatusType.CONNECTED);
             }
         });
         t.start();

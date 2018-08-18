@@ -4,9 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -89,7 +87,7 @@ public class AdvancedChannel implements AutoCloseable, ConnectionListener {
     @Override
     public void onDataReceived(byte[] data, Date received, Connection sender) {
         try {
-            if (DataPackage.IsValidFormat(data)) {
+            if (DataPackage.isValidFormat(data)) {
                 DataPackage justForCheck = new DataPackage(data, CacheFolder, false);
                 StreamCodes Code = StreamCodes.values()[justForCheck.StreamCode];
 
@@ -123,7 +121,7 @@ public class AdvancedChannel implements AutoCloseable, ConnectionListener {
                         dpa.StreamCode = StreamCodes.Confirm.getValue();
                         dpa.Priority = TypesOPriority.VeryHigh;
                         dpa.ConfirmationSystem = false;
-                        Send(dpa);
+                        send(dpa);
                     }
 
                     if (dp.isFinished()) {
@@ -179,22 +177,22 @@ public class AdvancedChannel implements AutoCloseable, ConnectionListener {
     public boolean ConfirmationSystem = true;
 
     // This is where temporary files are being stored.
-    public String CacheFolder = null;//Path.GetTempPath();
+    public String CacheFolder = null; //Path.GetTempPath();
 
     // Send a file! Actually it creates a new DataPackage with specified file stream.
     // code = 4, buffer = 4096 * 1000
-    public void SendFile(String path, byte code, int buffer) throws IOException, FileNotFoundException {
+    public void sendFile(String path, byte code, int buffer) throws IOException, FileNotFoundException {
         if (!new File(path).exists()) throw new FileNotFoundException();
         int UniqueID = allocateNewID();
         FileInputStream fs = new FileInputStream(path);
         DataPackage dp = new DataPackage(UniqueID, fs, code, ConfirmationSystem);
         dp.Buffer = buffer;
-        Send(dp);
+        send(dp);
     }
 
     // Send a simple message! (or write message data to new DataPackage -> stream)
     // code = 0, uniqueID = -1
-    public void SendMessage(String message, byte code, int uniqueID) {
+    public void sendMessage(String message, byte code, int uniqueID) {
         if (uniqueID == -1)
             uniqueID = allocateNewID();
         byte[] data = message.getBytes();
@@ -203,11 +201,11 @@ public class AdvancedChannel implements AutoCloseable, ConnectionListener {
             dp.getOutputStream().write(data, 0, data.length);
         } catch (IOException ignored) {
         }
-        Send(dp);
+        send(dp);
     }
 
     // Send DataPackage over the stream.
-    public void Send(DataPackage dp) {
+    public void send(DataPackage dp) {
         if (dp == null) throw new IllegalArgumentException("DataPackage was null!");
         reportID(dp.getUniqueID());
         //if (!StreamSupport.stream(OutgoingQueue).anyMatch(x -> x.getUniqueID() == dp.getUniqueID()))
@@ -274,7 +272,7 @@ public class AdvancedChannel implements AutoCloseable, ConnectionListener {
                             if (current.isFinished()) {
                                 Console.Log("Successfully processed package with id: " + current.getUniqueID(), TypesOLog.DEBUG);
                                 current.getOutputStream().flush();
-                                if (current.IsBuffered()) current.getOutputStream().close();
+                                if (current.isBuffered()) current.getOutputStream().close();
                                 OutgoingQueue.remove(current);
                             } else if (current.Priority == TypesOPriority.Normal)
                                 last = current;

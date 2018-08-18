@@ -1,6 +1,7 @@
 package me.blankboy.remotecommunicationutils;
 
 import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -85,5 +86,18 @@ final class Extensions {
         for (int i = 0; i < value.length; i++)
             sBuilder.append(String.format("x2", value[i]));
         return sBuilder.toString();
+    }
+
+    public static String getTempDirectory() {
+        try {
+            File temp = File.createTempFile("temp-file-name", ".tmp");
+            String absolutePath = temp.getAbsolutePath();
+            if (temp.exists()) temp.delete();
+            return absolutePath.substring(0, absolutePath.lastIndexOf(File.separator));
+        }
+        catch (Exception ignored){
+
+        }
+        return "";
     }
 }

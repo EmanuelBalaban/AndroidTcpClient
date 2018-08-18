@@ -3,7 +3,6 @@ package me.blankboy.remotecommunicationutils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
 public class Chunk {
     // This is every chunk code but its not implemented to use this one. So every chunk will be sent with DataPackage's code.
@@ -49,6 +48,11 @@ public class Chunk {
         InputStream is = Owner.getInputStream();
         is.skip(Position);
 
+        int read;
+        int offset = 0;
+        while (data.length - offset > 0 && (read = is.read(data, offset, data.length - offset)) > 0)
+            offset += read;
+        /*
         int read = is.read(data, 0, Length);
         if (read > 0) {
             if (read != Length) {
@@ -58,7 +62,8 @@ public class Chunk {
             }
             return data;
         }
-        return null;
+        */
+        return data;
     }
 
     // Get MD5 hash byte array of this chunk.

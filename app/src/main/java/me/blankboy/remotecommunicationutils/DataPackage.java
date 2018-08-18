@@ -1,14 +1,11 @@
 package me.blankboy.remotecommunicationutils;
 
-import android.util.Log;
-
 import java.io.*;
-import java.nio.channels.FileChannel;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.DataFormatException;
 
-import java8.util.function.Predicate;
 import java8.util.stream.*;
 
 // Yet just another data representation!
@@ -185,7 +182,7 @@ public class DataPackage implements AutoCloseable {
 
     // Parse data into chunk.
     Chunk parseChunk(byte[] data) throws Exception {
-        if (!IsValidFormat(data)) throw new DataFormatException("Invalid format!");
+        if (!isValidFormat(data)) throw new DataFormatException("Invalid format!");
 
         int offset = 0;
 
@@ -213,7 +210,7 @@ public class DataPackage implements AutoCloseable {
         long pos = getLastPosition(false);
         Chunk chunk = new Chunk(this, Code, StreamCode, pos, Extensions.LimitToRange((int) (Size - pos), 0, data.length - offset), time, System.currentTimeMillis());
         chunk.Confirmation = TypesOConfirmation.Confirmed;
-        Log.e("ERROR", "Check this out! DataPackage 177.");
+        //Log.e("ERROR", "Check this out! DataPackage 177.");
         return chunk;
     }
 
@@ -224,7 +221,7 @@ public class DataPackage implements AutoCloseable {
         if (offsetInData < 0) throw new IllegalArgumentException("Offset cannot be negative.");
 
         if (calculatePosition)
-            chunk.Position = getLastPosition(false);
+            chunk.Position = getLastPosition(false); // getLength();
         if (calculateLength)
             chunk.Length = Extensions.LimitToRange((int) (Size - chunk.Position), 0, Buffer);
 
@@ -278,7 +275,7 @@ public class DataPackage implements AutoCloseable {
     // This is just for receive purposes!
     // CacheFolder = null, writeData = true
     public DataPackage(byte[] data, String CacheFolder, boolean writeData) throws DataFormatException {
-        if (!IsValidFormat(data)) throw new DataFormatException("Invalid format!");
+        if (!isValidFormat(data)) throw new DataFormatException("Invalid format!");
         /*
         if (CacheFolder != null && Directory.Exists(CacheFolder))
             this.CacheFolder = CacheFolder;
@@ -306,14 +303,14 @@ public class DataPackage implements AutoCloseable {
         offset += Extensions.LongSize;
 
         // Message(Size - Offset)
-        //ResetStream();
+        resetStream();
         if (writeData) {
             try {
                 _OutputStream.write(data, offset, data.length - offset);
             } catch (IOException ignored) {
 
             } finally {
-                Chunk chunk = new Chunk(this, Code, StreamCode, offset, data.length - offset, time, System.currentTimeMillis());
+                Chunk chunk = new Chunk(this, Code, StreamCode, 0, data.length - offset, time, System.currentTimeMillis());
                 Chunks.add(chunk);
             }
         }
@@ -335,7 +332,7 @@ public class DataPackage implements AutoCloseable {
         this.Code = Code;
         //if (!string.IsNullOrEmpty(CacheFolder) && Directory.Exists(CacheFolder)) this.CacheFolder = CacheFolder;
         this.ConfirmationSystem = ConfirmationSystem;
-        //ResetStream();
+        resetStream();
     }
 
     // Expected size of this package.
@@ -360,10 +357,11 @@ public class DataPackage implements AutoCloseable {
     }
 
     // Expected size is bigger than allowed MaximumUnBuffered. This indicates it is being saved to a temporary file.
-    private boolean _IsBuffered = false;
+    //private boolean _IsBuffered = false;
 
-    public boolean IsBuffered() {
-        return _IsBuffered;
+    public boolean isBuffered() {
+        return Size > MaximumUnBuffered || _OutputStream instanceof FileOutputStream;
+        //return _IsBuffered;
     }
 
     // This package stream code. Usualy StreamCodes.Append.
@@ -376,17 +374,21 @@ public class DataPackage implements AutoCloseable {
         return Code;
     }
 
+    public byte[] getHashData() throws Exception {
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        InputStream is = getInputStream();
+        byte[] buffer = new byte[Buffer];
+        int read;
+        while ((read = is.read(buffer)) != -1) {
+            md.update(buffer, 0, read);
+        }
+        return md.digest();
+    }
+
     // Get MD5 hash of this package.
     // It calculates hash of current stream data.
-    public String GetHash() {
-        /*
-        using (var md5 = System.Security.Cryptography.MD5.Create())
-        {
-            byte[] hash = md5.ComputeHash(Stream);
-            return hash.ToReadableHexadecimal(); //BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        }
-        */
-        return "";
+    public String getHash() throws Exception {
+        return Extensions.getReadableHexadecimal(getHashData());
     }
 
     // Don't want this package to be confirmed? Want faster transmission?
@@ -437,7 +439,7 @@ public class DataPackage implements AutoCloseable {
     public int Buffer = DefaultBuffer;
 
     // This tells you if is valid package. Means if bigger or equal to DefaultMessageOffset.
-    public static boolean IsValidFormat(byte[] data) {
+    public static boolean isValidFormat(byte[] data) {
         return data.length >= DefaultMessageOffset;
     }
 
@@ -451,84 +453,75 @@ public class DataPackage implements AutoCloseable {
 
     public void setCacheFolder(String value) {
         if (value == _CacheFolder) return;
-        /*
-        if (Directory.Exists(value))
+
+        File dir = new File(value);
+
+        if (dir.exists() && dir.isDirectory())
             _CacheFolder = value;
         else
-            _CacheFolder = System.IO.Path.GetTempPath();
-        */
+            _CacheFolder = Extensions.getTempDirectory();
+
     }
-/*
-    /// <summary>
-    /// Reset entire stream. Becareful with this! it is not for kids!
-    /// </summary>
-    public void ResetStream()
-    {
-        if (File.Exists(Path)) File.Delete(Path);
-        Path = null;
-        if (IsBuffered = Size > MaximumUnBuffered)
-        {
-            Path = System.IO.Path.GetTempFileName();
-            if (CacheFolder != System.IO.Path.GetTempPath())
-            {
-                File.Delete(Path);
-                Path = System.IO.Path.Combine(CacheFolder, System.IO.Path.GetFileName(Path));
-                //File.Create(Path);
-            }
-            Stream = new FileStream(Path, FileMode.OpenOrCreate);
+
+    // Reset entire stream. Be careful with this! it is not for kids!
+    public void resetStream() {
+        try {
+            File f = new File(Path);
+            if (f.exists()) f.delete();
+            Path = null;
+            if (Size > MaximumUnBuffered) {
+                File tmp = File.createTempFile("blankboy", ".tmp", new File(_CacheFolder));
+                Path = tmp.getAbsolutePath();
+                _OutputStream = new FileOutputStream(tmp);
+            } else _OutputStream = new ByteArrayOutputStream();
+        } catch (Exception ignored) {
+
         }
-        else Stream = new MemoryStream();
     }
 
-        ~DataPackage()
-    {
-        Dispose();
-    }
+    /// Get human readable version of this package.
+    @Override
+    public String toString() {
 
-    /*
-        /// <summary>
-        /// Get human readable version of this package.
-        /// </summary>
-        public override string ToString()
-        {
-            unchecked
-            {
-                StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine("{");
-                sb.AppendLine("UniqueID = " + UniqueID);
-                sb.AppendLine("Size = " + Size);
-                sb.AppendLine("Buffer = " + Buffer);
-                sb.AppendLine("Chunks = " + Chunks.Count);
+        sb.append("{");
+        sb.append("UniqueID = " + UniqueID);
+        sb.append("Size = " + Size);
+        sb.append("Buffer = " + Buffer);
+        sb.append("Chunks = " + Chunks.size());
 
-                sb.AppendLine("\nFirstSent = " + FirstSent);
-                sb.AppendLine("FirstReceived = " + FirstReceived);
-                sb.AppendLine("LastSent = " + LastSent);
-                sb.AppendLine("LastReceived = " + LastReceived);
+        sb.append("\nFirstSent = " + firstSent());
+        sb.append("FirstReceived = " + firstReceived());
+        sb.append("LastSent = " + lastSent());
+        sb.append("LastReceived = " + lastReceived());
 
-                sb.AppendLine("\nIsBuffered = " + IsBuffered);
-                if (IsBuffered) sb.AppendLine("TempPath = " + Path);
-                sb.AppendLine("IsFinished = " + IsFinished);
-                if (!IsFinished)
-                {
-                    sb.AppendLine("PercentageDone = " + Percentage);
-                    sb.AppendLine("Stream = " + getLength());
-                }
-                else sb.AppendLine("Hash = " + GetHash());
+        sb.append("\nIsBuffered = " + isBuffered());
+        if (isBuffered()) sb.append("TempPath = " + Path);
+        sb.append("IsFinished = " + isFinished());
+        if (!isFinished()) {
+            sb.append("PercentageDone = " + Percentage());
+            sb.append("Stream = " + getLength());
+        } else {
+            try {
+                sb.append("Hash = " + getHash());
+            } catch (Exception ignored) {
 
-                sb.AppendLine("\nCode = " + Code);
-                sb.AppendLine("StreamCode = " + StreamCode);
-
-                sb.AppendLine("\nPriority = " + Priority);
-                sb.AppendLine("ConfirmationSystem = " + ConfirmationSystem);
-
-                sb.AppendLine("\n --- Average Values --- ");
-                sb.AppendLine("Latency = " + AverageLatency);
-                sb.AppendLine("Speed = " + AverageSpeed());
-                sb.AppendLine("}");
-
-                return sb.ToString();
             }
         }
-        */
+
+        sb.append("\nCode = " + Code);
+        sb.append("StreamCode = " + StreamCode);
+
+        sb.append("\nPriority = " + Priority);
+        sb.append("ConfirmationSystem = " + ConfirmationSystem);
+
+        sb.append("\n --- Average Values --- ");
+        sb.append("Latency = " + averageLatency());
+        sb.append("Speed = " + averageSpeed(Data.KiloBytes));
+        sb.append("}");
+
+        return sb.toString();
+
+    }
 }
